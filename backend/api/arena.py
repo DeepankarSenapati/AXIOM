@@ -7,8 +7,7 @@ from backend.api.models import (
     RunArenaRequest,
     TradeRecordResponse,
 )
-from backend.bots.strategies.rsi import RSIStrategy
-from backend.bots.strategies.simple_ma import SimpleMovingAverageStrategy
+from backend.bots.registry import UnknownStrategyError, get_strategy_class
 from backend.db.models import DBBot
 from backend.db.session import get_db
 from backend.engine.arena import Arena
@@ -19,15 +18,11 @@ from backend.engine.models import BacktestResult
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
-_STRATEGY_MAP = {
-    "simple_ma": SimpleMovingAverageStrategy,
-    "rsi": RSIStrategy,
-}
-
 
 def _build_runner(bot: DBBot, symbol: str, starting_cash: float) -> BotRunner:
-    strategy_cls = _STRATEGY_MAP.get(bot.strategy_name)
-    if strategy_cls is None:
+    try:
+        strategy_cls = get_strategy_class(bot.strategy_name)
+    except UnknownStrategyError:
         raise HTTPException(
             status_code=422,
             detail=f"Unknown strategy '{bot.strategy_name}' for bot '{bot.id}'",

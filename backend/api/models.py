@@ -2,16 +2,25 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from backend.bots.registry import STRATEGY_MAP
 
 
 # ── Bots ──────────────────────────────────────────────────────────────────────
 
 class BotCreate(BaseModel):
     name: str
-    strategy_key: Literal["simple_ma", "rsi"]
+    strategy_key: str
     params: dict[str, float | int | str] = {}
     starting_cash: float = 10_000.0
+
+    @field_validator("strategy_key")
+    @classmethod
+    def strategy_must_exist(cls, v: str) -> str:
+        if v not in STRATEGY_MAP:
+            raise ValueError(f"Unknown strategy '{v}'. Available: {list(STRATEGY_MAP.keys())}")
+        return v
 
 
 class BotResponse(BaseModel):

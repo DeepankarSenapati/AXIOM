@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const STRATEGIES = ["simple_ma", "rsi"];
+const STRATEGIES = ["simple_ma", "rsi", "bollinger_bands", "macd"];
 
 function useBots() {
   const [bots, setBots] = useState([]);
@@ -44,23 +44,29 @@ export default function Dashboard() {
   const totalActive = bots.filter((b) => b.is_active).length;
   const strategiesUsed = [...new Set(bots.map((b) => b.strategy_name))];
 
-  function handleCreate(e) {
+  async function handleCreate(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
     setCreating(true);
     setCreateError(null);
-    fetch("/bots/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    })
-      .then((r) => {
-        if (!r.ok) return r.json().then((d) => { throw new Error(d.detail || `HTTP ${r.status}`); });
-        return r.json();
-      })
-      .then(() => { setForm({ name: "", strategy_key: "simple_ma" }); refetch(); })
-      .catch((e) => setCreateError(e.message))
-      .finally(() => setCreating(false));
+    try {
+      const res = await fetch("/bots/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name, strategy_key: form.strategy_key }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateError(JSON.stringify(data.detail || data));
+        return;
+      }
+      setForm({ name: "", strategy_key: "simple_ma" });
+      refetch();
+    } catch (e) {
+      setCreateError(e.message || "Network error");
+    } finally {
+      setCreating(false);
+    }
   }
 
   function handleDeactivate(botId) {
