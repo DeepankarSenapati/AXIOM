@@ -35,7 +35,7 @@ AXIOM/
 │   ├── engine/         # BotRunner, Backtester, Arena, MarketFeed
 │   ├── tokenomics/     # TokenLedger, Distributor
 │   ├── governance/     # StageManager, VotingManager
-│   ├── bots/           # Strategy registry, BaseStrategy, MovingAverage & RSI strategies
+│   ├── bots/           # Strategy registry, BaseStrategy, Moving Average, RSI, Bollinger Bands & MACD strategies
 │   ├── api/            # FastAPI routers
 │   ├── db/             # SQLAlchemy models, session management
 │   ├── config.py       # All constants (token splits, governance thresholds)
@@ -113,6 +113,8 @@ The dashboard will be available at `http://localhost:5173`.
 # From the project root, with the venv activated
 pytest tests/ -v
 ```
+
+125 tests passing across engine, tokenomics, governance, and all four strategies.
 
 ---
 
