@@ -46,6 +46,8 @@ class BacktestResult(BaseModel):
     trade_records: list[TradeRecord]
     start_cash: float
     end_cash: float
+    sharpe_ratio: float
+    max_drawdown: float
 
 
 class ArenaResult(BaseModel):

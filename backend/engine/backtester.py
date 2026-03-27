@@ -1,5 +1,45 @@
+import math
+
 from backend.engine.bot_runner import BotRunner
-from backend.engine.models import BacktestResult, Candle
+from backend.engine.models import BacktestResult, Candle, TradeRecord
+
+
+def _sharpe_ratio(records: list[TradeRecord], start_cash: float) -> float:
+    """Annualised Sharpe ratio from the per-tick equity series (252 trading days)."""
+    if len(records) < 2:
+        return 0.0
+    equities = [start_cash + r.pnl for r in records]
+    returns = [
+        (equities[i] - equities[i - 1]) / equities[i - 1]
+        for i in range(1, len(equities))
+        if equities[i - 1] != 0
+    ]
+    if len(returns) < 2:
+        return 0.0
+    n = len(returns)
+    mean = sum(returns) / n
+    variance = sum((r - mean) ** 2 for r in returns) / (n - 1)
+    std = math.sqrt(variance)
+    if std == 0:
+        return 0.0
+    return (mean / std) * math.sqrt(252)
+
+
+def _max_drawdown(records: list[TradeRecord], start_cash: float) -> float:
+    """Largest peak-to-trough decline in equity, returned as a negative fraction."""
+    if not records:
+        return 0.0
+    peak = start_cash
+    max_dd = 0.0
+    for r in records:
+        equity = start_cash + r.pnl
+        if equity > peak:
+            peak = equity
+        if peak > 0:
+            dd = (equity - peak) / peak
+            if dd < max_dd:
+                max_dd = dd
+    return max_dd
 
 
 class Backtester:
@@ -21,4 +61,6 @@ class Backtester:
             trade_records=records,
             start_cash=start_cash,
             end_cash=end_cash,
+            sharpe_ratio=_sharpe_ratio(records, start_cash),
+            max_drawdown=_max_drawdown(records, start_cash),
         )

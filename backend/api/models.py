@@ -70,6 +70,8 @@ class BacktestResultResponse(BaseModel):
     final_pnl: float
     start_cash: float
     end_cash: float
+    sharpe_ratio: float
+    max_drawdown: float
     trade_records: list[TradeRecordResponse]
 
 

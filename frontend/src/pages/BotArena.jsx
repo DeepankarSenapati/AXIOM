@@ -148,6 +148,8 @@ function ArenaComparison({ results, bots, startCash }) {
       startCash: res.start_cash,
       endCash: res.end_cash,
       winRate: wr,
+      sharpe: res.sharpe_ratio ?? 0,
+      maxDrawdown: res.max_drawdown ?? 0,
       color: BOT_COLORS[idx % BOT_COLORS.length],
     };
   }).sort((a, b) => b.finalPnl - a.finalPnl);
@@ -204,6 +206,8 @@ function ArenaComparison({ results, bots, startCash }) {
                 <th className="th">End Cash</th>
                 <th className="th">Trades</th>
                 <th className="th">Win Rate</th>
+                <th className="th">Sharpe</th>
+                <th className="th">Max DD</th>
               </tr>
             </thead>
             <tbody>
@@ -224,6 +228,16 @@ function ArenaComparison({ results, bots, startCash }) {
                     {s.winRate !== null
                       ? <span className={parseFloat(s.winRate) >= 50 ? "text-emerald-400" : "text-red-400"}>{s.winRate}%</span>
                       : <span className="text-gray-600">—</span>}
+                  </td>
+                  <td className="td font-mono">
+                    <span className={s.sharpe >= 1 ? "text-emerald-400" : s.sharpe < 0 ? "text-red-400" : "text-gray-300"}>
+                      {s.sharpe.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="td font-mono">
+                    <span className={s.maxDrawdown < -0.1 ? "text-red-400" : "text-gray-300"}>
+                      {(s.maxDrawdown * 100).toFixed(1)}%
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -442,12 +456,14 @@ export default function BotArena() {
         {btError && <p className="text-sm text-red-400">{btError}</p>}
         {btResult && (
           <div className="space-y-4 pt-2 border-t border-gray-800">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
                 { label: "Total Trades", value: btResult.total_trades },
                 { label: "Start Cash", value: `$${btResult.start_cash?.toFixed(2)}` },
                 { label: "End Cash", value: `$${btResult.end_cash?.toFixed(2)}` },
                 { label: "Final PnL", value: <PnlBadge value={btResult.final_pnl ?? 0} /> },
+                { label: "Sharpe", value: (btResult.sharpe_ratio ?? 0).toFixed(2) },
+                { label: "Max DD", value: btResult.max_drawdown != null ? `${(btResult.max_drawdown * 100).toFixed(1)}%` : "—" },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-gray-800 rounded p-3">
                   <p className="text-xs text-gray-500">{label}</p>

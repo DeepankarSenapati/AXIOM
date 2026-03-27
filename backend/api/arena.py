@@ -56,6 +56,8 @@ def _to_response(result: BacktestResult) -> BacktestResultResponse:
         final_pnl=result.final_pnl,
         start_cash=result.start_cash,
         end_cash=result.end_cash,
+        sharpe_ratio=result.sharpe_ratio,
+        max_drawdown=result.max_drawdown,
         trade_records=[
             TradeRecordResponse(
                 bot_id=r.bot_id,
