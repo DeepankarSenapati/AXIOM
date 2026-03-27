@@ -23,12 +23,54 @@ function useBots() {
   return { bots, loading, error, refetch: fetchBots };
 }
 
-function StatCard({ label, value, sub }) {
+function StatCard({ label, value, sub, children }) {
   return (
     <div className="card flex flex-col gap-1">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
       <p className="text-3xl font-bold text-gray-100">{value}</p>
       {sub && <p className="text-xs text-gray-600">{sub}</p>}
+      {children}
+    </div>
+  );
+}
+
+function StrategyBadges() {
+  const labels = {
+    simple_ma: "MA",
+    rsi: "RSI",
+    bollinger_bands: "BB",
+    macd: "MACD",
+  };
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {STRATEGIES.map((s) => (
+        <span key={s} className="badge badge-blue text-xs">{labels[s]}</span>
+      ))}
+    </div>
+  );
+}
+
+function TopPerformerCard({ bots }) {
+  if (bots.length === 0) {
+    return (
+      <div className="card">
+        <h2 className="text-sm font-semibold text-gray-300 mb-3">Top Performer</h2>
+        <p className="text-sm text-gray-500">
+          Run the arena on the <span className="text-indigo-400">Bot Arena</span> page to see performance rankings here.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <h2 className="text-sm font-semibold text-gray-300 mb-3">Top Performer</h2>
+      <p className="text-sm text-gray-500">
+        No backtest results stored yet —{" "}
+        <span className="text-indigo-400">Bot Arena</span> to run a simulation.
+      </p>
+      <p className="text-xs text-gray-600 mt-2">
+        {bots.length} bot{bots.length !== 1 ? "s" : ""} available to compete.
+      </p>
     </div>
   );
 }
@@ -42,7 +84,6 @@ export default function Dashboard() {
 
   const totalBots = bots.length;
   const totalActive = bots.filter((b) => b.is_active).length;
-  const strategiesUsed = [...new Set(bots.map((b) => b.strategy_name))];
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -87,7 +128,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Total Bots"
           value={loading ? "—" : totalBots}
@@ -98,12 +139,18 @@ export default function Dashboard() {
           value={loading ? "—" : totalActive}
           sub={totalBots > 0 ? `${totalBots - totalActive} deactivated` : "none registered"}
         />
+        <StatCard label="Strategies Available" value={STRATEGIES.length}>
+          <StrategyBadges />
+        </StatCard>
         <StatCard
-          label="Strategies Available"
-          value={STRATEGIES.length}
-          sub={strategiesUsed.length > 0 ? `in use: ${strategiesUsed.join(", ")}` : "none deployed"}
+          label="Total Strategies"
+          value={4}
+          sub="MA · RSI · BB · MACD"
         />
       </div>
+
+      {/* Top Performer */}
+      <TopPerformerCard bots={bots} />
 
       {/* Create bot */}
       <div className="card">
