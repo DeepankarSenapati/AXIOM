@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
 import {
   AreaChart, Area,
   LineChart, Line,
@@ -8,6 +8,33 @@ import {
 
 // One colour per bot in the arena comparison chart
 const BOT_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#a855f7", "#14b8a6"];
+
+const CRYPTO_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"];
+const INDIAN_SYMBOLS = [
+  { value: "RELIANCE.NS", label: "RELIANCE.NS — Reliance Industries" },
+  { value: "TCS.NS",      label: "TCS.NS — Tata Consultancy Services" },
+  { value: "INFY.NS",     label: "INFY.NS — Infosys" },
+  { value: "HDFCBANK.NS", label: "HDFCBANK.NS — HDFC Bank" },
+  { value: "WIPRO.NS",    label: "WIPRO.NS — Wipro" },
+  { value: "^NSEI",       label: "^NSEI — NIFTY 50 Index" },
+];
+
+function isIndian(symbol) {
+  return symbol.endsWith(".NS") || symbol.startsWith("^");
+}
+
+function SymbolSelect({ value, onChange }) {
+  return (
+    <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+      <optgroup label="Crypto (via Binance)">
+        {CRYPTO_SYMBOLS.map((s) => <option key={s} value={s}>{s}</option>)}
+      </optgroup>
+      <optgroup label="Indian Stocks (via NSE)">
+        {INDIAN_SYMBOLS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+      </optgroup>
+    </select>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -27,7 +54,7 @@ function winRate(records) {
   for (let i = 1; i < records.length; i++) {
     if (
       (records[i].action_type === "BUY" || records[i].action_type === "SELL") &&
-      records[i].pnl > records[i - 1].pnl
+      Number(records[i].pnl ?? 0) > Number(records[i - 1].pnl ?? 0)
     ) wins++;
   }
   return ((wins / trades.length) * 100).toFixed(1);
@@ -39,11 +66,12 @@ function winRate(records) {
 
 function EquityCurve({ records, startCash }) {
   if (!records || records.length === 0) return null;
+  const cash = Number(startCash) || 10000;
 
   const data = records.map((r, i) => ({
     tick: i + 1,
-    equity: parseFloat((startCash + (r.pnl ?? 0)).toFixed(2)),
-    pnl: parseFloat((r.pnl ?? 0).toFixed(2)),
+    equity: parseFloat((cash + Number(r.pnl ?? 0)).toFixed(2)),
+    pnl: parseFloat(Number(r.pnl ?? 0).toFixed(2)),
     action: r.action_type,
     time: new Date(r.timestamp).toLocaleTimeString(),
   }));
@@ -93,7 +121,7 @@ function EquityCurve({ records, startCash }) {
             <XAxis dataKey="tick" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#374151" }} />
             <YAxis domain={[min * 0.999, max * 1.001]} tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} width={62} />
             <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine y={startCash} stroke="#4b5563" strokeDasharray="4 2" />
+            <ReferenceLine y={cash} stroke="#4b5563" strokeDasharray="4 2" />
             <Area type="monotone" dataKey="equity" stroke={color} strokeWidth={2} fill="url(#eg)" dot={false} activeDot={{ r: 4, fill: color, stroke: "#111827" }} />
           </AreaChart>
         </ResponsiveContainer>
@@ -109,6 +137,7 @@ function EquityCurve({ records, startCash }) {
 function ArenaComparison({ results, bots, startCash }) {
   const entries = Object.entries(results);
   if (entries.length === 0) return null;
+  const cash = Number(startCash) || 10000;
 
   // Build merged tick-by-tick dataset: [{tick:1, botId1: equity, botId2: equity, ...}]
   const maxLen = Math.max(...entries.map(([, r]) => r.trade_records.length));
@@ -116,7 +145,7 @@ function ArenaComparison({ results, bots, startCash }) {
     const row = { tick: i + 1 };
     entries.forEach(([botId, res]) => {
       const rec = res.trade_records[i];
-      row[botId] = rec ? parseFloat((startCash + (rec.pnl ?? 0)).toFixed(2)) : null;
+      row[botId] = rec ? parseFloat((cash + Number(rec.pnl ?? 0)).toFixed(2)) : null;
     });
     return row;
   });
@@ -143,13 +172,13 @@ function ArenaComparison({ results, bots, startCash }) {
       botId,
       name: bot?.name ?? botId.slice(0, 8),
       strategy: bot?.strategy_name ?? "—",
-      finalPnl: res.final_pnl ?? 0,
+      finalPnl: Number(res.final_pnl ?? 0),
       trades: res.total_trades,
       startCash: res.start_cash,
-      endCash: res.end_cash,
+      endCash: Number(res.end_cash ?? 0),
       winRate: wr,
-      sharpe: res.sharpe_ratio ?? 0,
-      maxDrawdown: res.max_drawdown ?? 0,
+      sharpe: Number(res.sharpe_ratio ?? 0),
+      maxDrawdown: Number(res.max_drawdown ?? 0),
       color: BOT_COLORS[idx % BOT_COLORS.length],
     };
   }).sort((a, b) => b.finalPnl - a.finalPnl);
@@ -173,7 +202,7 @@ function ArenaComparison({ results, bots, startCash }) {
                 }}
                 wrapperStyle={{ paddingTop: 8 }}
               />
-              <ReferenceLine y={startCash} stroke="#4b5563" strokeDasharray="4 2" label={{ value: "Start", fill: "#6b7280", fontSize: 10 }} />
+              <ReferenceLine y={cash} stroke="#4b5563" strokeDasharray="4 2" label={{ value: "Start", fill: "#6b7280", fontSize: 10 }} />
               {entries.map(([botId], idx) => (
                 <Line
                   key={botId}
@@ -222,7 +251,7 @@ function ArenaComparison({ results, bots, startCash }) {
                   </td>
                   <td className="td"><span className="badge badge-blue">{s.strategy}</span></td>
                   <td className="td"><PnlBadge value={s.finalPnl} /></td>
-                  <td className="td font-mono">${s.endCash?.toFixed(2)}</td>
+                  <td className="td font-mono">${Number(s.endCash ?? 0).toFixed(2)}</td>
                   <td className="td">{s.trades}</td>
                   <td className="td">
                     {s.winRate !== null
@@ -292,10 +321,10 @@ function TradeTable({ records }) {
                   {r.action_type === "HOLD" && <span className="badge badge-yellow">HOLD</span>}
                 </td>
                 <td className="td font-mono">{r.symbol}</td>
-                <td className="td">{typeof r.quantity === "number" ? r.quantity.toFixed(4) : r.quantity}</td>
-                <td className="td">{r.price?.toFixed(2)}</td>
-                <td className="td">{r.cash_after?.toFixed(2)}</td>
-                <td className="td"><PnlBadge value={r.pnl ?? 0} /></td>
+                <td className="td">{Number(r.quantity ?? 0).toFixed(4)}</td>
+                <td className="td">{Number(r.price ?? 0).toFixed(2)}</td>
+                <td className="td">{Number(r.cash_after ?? 0).toFixed(2)}</td>
+                <td className="td"><PnlBadge value={Number(r.pnl ?? 0)} /></td>
                 <td className="td text-gray-500 text-xs max-w-xs truncate">{r.reason}</td>
                 <td className="td text-gray-500 text-xs">{new Date(r.timestamp).toLocaleTimeString()}</td>
               </tr>
@@ -308,10 +337,43 @@ function TradeTable({ records }) {
 }
 
 // ---------------------------------------------------------------------------
+// Error boundary — prevents a render crash from showing a blank page
+// ---------------------------------------------------------------------------
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6">
+          <div className="card border border-red-800 space-y-2">
+            <p className="text-sm font-semibold text-red-400">Something went wrong in Bot Arena</p>
+            <p className="text-xs text-gray-500 font-mono">{this.state.error.message}</p>
+            <button
+              className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs"
+              onClick={() => this.setState({ error: null })}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
-export default function BotArena() {
+function BotArenaPage() {
   const [bots, setBots] = useState([]);
   const [botsLoading, setBotsLoading] = useState(true);
 
@@ -337,6 +399,8 @@ export default function BotArena() {
   const [arenaLoading, setArenaLoading] = useState(false);
   const [arenaError, setArenaError] = useState(null);
 
+  const safeNum = (val, fallback) => { const n = parseFloat(val); return isNaN(n) ? fallback : n; };
+
   useEffect(() => {
     fetch("/bots/")
       .then((r) => r.json())
@@ -354,9 +418,9 @@ export default function BotArena() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           symbol: btSymbol,
-          num_candles: Number(btCandles),
-          start_price: Number(btStartPrice),
-          starting_cash: Number(btCash),
+          num_candles: safeNum(btCandles, 100),
+          start_price: safeNum(btStartPrice, 50000),
+          starting_cash: safeNum(btCash, 10000),
           data_source: btDataSource,
           timeframe: btTimeframe,
         }),
@@ -386,9 +450,9 @@ export default function BotArena() {
         body: JSON.stringify({
           bot_ids: arenaSelectedIds,
           symbol: arenaSymbol,
-          num_candles: Number(arenaCandles),
-          start_price: Number(arenaStartPrice),
-          starting_cash: Number(arenaCash),
+          num_candles: safeNum(arenaCandles, 100),
+          start_price: safeNum(arenaStartPrice, 50000),
+          starting_cash: safeNum(arenaCash, 10000),
           data_source: arenaDataSource,
           timeframe: arenaTimeframe,
         }),
@@ -423,15 +487,21 @@ export default function BotArena() {
                   {bots.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.strategy_name})</option>)}
                 </select>
               </div>
-              <div><label className="label">Symbol</label><input className="input" value={btSymbol} onChange={(e) => setBtSymbol(e.target.value)} /></div>
+              <div>
+                <label className="label">Symbol</label>
+                <SymbolSelect value={btSymbol} onChange={(sym) => {
+                  setBtSymbol(sym);
+                  if (isIndian(sym)) setBtDataSource("live");
+                }} />
+              </div>
               <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={btCandles} onChange={(e) => setBtCandles(e.target.value)} /></div>
               <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={btStartPrice} onChange={(e) => setBtStartPrice(e.target.value)} disabled={btDataSource === "live"} /></div>
               <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={btCash} onChange={(e) => setBtCash(e.target.value)} /></div>
               <div>
                 <label className="label">Data Source</label>
-                <select className="input" value={btDataSource} onChange={(e) => setBtDataSource(e.target.value)}>
+                <select className="input" value={btDataSource} onChange={(e) => setBtDataSource(e.target.value)} disabled={isIndian(btSymbol)}>
                   <option value="mock">Mock (simulated)</option>
-                  <option value="live">Live (Binance)</option>
+                  <option value="live">Live</option>
                 </select>
               </div>
               {btDataSource === "live" && (
@@ -446,7 +516,11 @@ export default function BotArena() {
               )}
             </div>
             {btDataSource === "live" && (
-              <p className="text-xs text-indigo-400">Using real BTC/USDT data from Binance</p>
+              <p className="text-xs text-indigo-400">
+                {isIndian(btSymbol)
+                  ? `Using real ${btSymbol} data from NSE via yfinance`
+                  : `Using real ${btSymbol} data from Binance`}
+              </p>
             )}
             <div className="flex items-center gap-3">
               <button type="submit" className="btn-primary" disabled={btLoading}>{btLoading ? "Running…" : "Run Backtest"}</button>
@@ -459,11 +533,11 @@ export default function BotArena() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
                 { label: "Total Trades", value: btResult.total_trades },
-                { label: "Start Cash", value: `$${btResult.start_cash?.toFixed(2)}` },
-                { label: "End Cash", value: `$${btResult.end_cash?.toFixed(2)}` },
-                { label: "Final PnL", value: <PnlBadge value={btResult.final_pnl ?? 0} /> },
-                { label: "Sharpe", value: (btResult.sharpe_ratio ?? 0).toFixed(2) },
-                { label: "Max DD", value: btResult.max_drawdown != null ? `${(btResult.max_drawdown * 100).toFixed(1)}%` : "—" },
+                { label: "Start Cash", value: `$${Number(btResult.start_cash ?? 0).toFixed(2)}` },
+                { label: "End Cash", value: `$${Number(btResult.end_cash ?? 0).toFixed(2)}` },
+                { label: "Final PnL", value: <PnlBadge value={Number(btResult.final_pnl ?? 0)} /> },
+                { label: "Sharpe", value: Number(btResult.sharpe_ratio ?? 0).toFixed(2) },
+                { label: "Max DD", value: `${(Number(btResult.max_drawdown ?? 0) * 100).toFixed(1)}%` },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-gray-800 rounded p-3">
                   <p className="text-xs text-gray-500">{label}</p>
@@ -471,7 +545,7 @@ export default function BotArena() {
                 </div>
               ))}
             </div>
-            <EquityCurve records={btResult.trade_records} startCash={btResult.start_cash} />
+            <EquityCurve records={btResult.trade_records} startCash={Number(btResult.start_cash) || 10000} />
             <TradeTable records={btResult.trade_records} />
           </div>
         )}
@@ -499,15 +573,21 @@ export default function BotArena() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div><label className="label">Symbol</label><input className="input" value={arenaSymbol} onChange={(e) => setArenaSymbol(e.target.value)} /></div>
+              <div>
+                <label className="label">Symbol</label>
+                <SymbolSelect value={arenaSymbol} onChange={(sym) => {
+                  setArenaSymbol(sym);
+                  if (isIndian(sym)) setArenaDataSource("live");
+                }} />
+              </div>
               <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={arenaCandles} onChange={(e) => setArenaCandles(e.target.value)} /></div>
               <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={arenaStartPrice} onChange={(e) => setArenaStartPrice(e.target.value)} disabled={arenaDataSource === "live"} /></div>
               <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={arenaCash} onChange={(e) => setArenaCash(e.target.value)} /></div>
               <div>
                 <label className="label">Data Source</label>
-                <select className="input" value={arenaDataSource} onChange={(e) => setArenaDataSource(e.target.value)}>
+                <select className="input" value={arenaDataSource} onChange={(e) => setArenaDataSource(e.target.value)} disabled={isIndian(arenaSymbol)}>
                   <option value="mock">Mock (simulated)</option>
-                  <option value="live">Live (Binance)</option>
+                  <option value="live">Live</option>
                 </select>
               </div>
               {arenaDataSource === "live" && (
@@ -522,7 +602,11 @@ export default function BotArena() {
               )}
             </div>
             {arenaDataSource === "live" && (
-              <p className="text-xs text-indigo-400">Using real BTC/USDT data from Binance</p>
+              <p className="text-xs text-indigo-400">
+                {isIndian(arenaSymbol)
+                  ? `Using real ${arenaSymbol} data from NSE via yfinance`
+                  : `Using real ${arenaSymbol} data from Binance`}
+              </p>
             )}
             <button type="submit" className="btn-primary" disabled={arenaLoading || arenaSelectedIds.length === 0}>
               {arenaLoading ? "Running Arena…" : `Run Arena (${arenaSelectedIds.length} bot${arenaSelectedIds.length !== 1 ? "s" : ""})`}
@@ -532,7 +616,7 @@ export default function BotArena() {
         {arenaError && <p className="text-sm text-red-400">{arenaError}</p>}
         {arenaResult && (
           <>
-            <ArenaComparison results={arenaResult.results} bots={bots} startCash={arenaCash} />
+            <ArenaComparison results={arenaResult.results} bots={bots} startCash={Number(arenaCash) || 10000} />
             {/* Individual trade logs, collapsible per bot */}
             <div className="space-y-4 pt-2 border-t border-gray-800">
               <h3 className="text-sm font-semibold text-gray-300">Individual Trade Logs</h3>
@@ -556,5 +640,13 @@ export default function BotArena() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function BotArena() {
+  return (
+    <ErrorBoundary>
+      <BotArenaPage />
+    </ErrorBoundary>
   );
 }

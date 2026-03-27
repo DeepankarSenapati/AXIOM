@@ -9,11 +9,12 @@ def _sharpe_ratio(records: list[TradeRecord], start_cash: float) -> float:
     if len(records) < 2:
         return 0.0
     equities = [start_cash + r.pnl for r in records]
-    returns = [
+    raw_returns = [
         (equities[i] - equities[i - 1]) / equities[i - 1]
         for i in range(1, len(equities))
         if equities[i - 1] != 0
     ]
+    returns = [0.0 if math.isnan(r) or math.isinf(r) else r for r in raw_returns]
     if len(returns) < 2:
         return 0.0
     n = len(returns)
@@ -33,6 +34,8 @@ def _max_drawdown(records: list[TradeRecord], start_cash: float) -> float:
     max_dd = 0.0
     for r in records:
         equity = start_cash + r.pnl
+        if math.isnan(equity) or math.isinf(equity):
+            continue
         if equity > peak:
             peak = equity
         if peak > 0:

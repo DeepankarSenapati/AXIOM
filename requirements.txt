@@ -4,3 +4,4 @@ sqlalchemy==2.0.40
 pydantic==2.11.1
 pytest
 ccxt
+yfinance

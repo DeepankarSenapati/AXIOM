@@ -14,7 +14,12 @@ from backend.db.session import get_db
 from backend.engine.arena import Arena
 from backend.engine.backtester import Backtester
 from backend.engine.bot_runner import BotRunner
-from backend.engine.market_feed import CCXTFeed, MarketFeedError, MockMarketFeed
+from backend.engine.market_feed import CCXTFeed, MarketFeedError, MockMarketFeed, YFinanceFeed
+
+
+def _is_indian_symbol(symbol: str) -> bool:
+    """NSE stocks end with '.NS'; indices start with '^'."""
+    return symbol.endswith(".NS") or symbol.startswith("^")
 from backend.engine.models import BacktestResult
 
 router = APIRouter(prefix="/arena", tags=["arena"])
@@ -35,6 +40,12 @@ def _build_runner(bot: DBBot, symbol: str, starting_cash: float) -> BotRunner:
 def _fetch_candles(payload: RunArenaRequest | BacktestRequest) -> list:
     if payload.data_source == "live":
         try:
+            if _is_indian_symbol(payload.symbol):
+                return YFinanceFeed().fetch_historical(
+                    symbol=payload.symbol,
+                    timeframe=payload.timeframe,
+                    limit=payload.num_candles,
+                )
             return CCXTFeed().fetch_historical(
                 symbol=payload.symbol,
                 timeframe=payload.timeframe,
@@ -85,9 +96,12 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
 
     candles = _fetch_candles(payload)
 
-    runners = [(bot.id, _build_runner(bot, payload.symbol, payload.starting_cash)) for bot in bots]
-    arena = Arena(bots=runners)
-    arena_result = arena.run(candles)
+    try:
+        runners = [(bot.id, _build_runner(bot, payload.symbol, payload.starting_cash)) for bot in bots]
+        arena = Arena(bots=runners)
+        arena_result = arena.run(candles)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Arena run failed: {exc}") from exc
 
     return ArenaResultResponse(
         results={bot_id: _to_response(result) for bot_id, result in arena_result.results.items()}
@@ -106,7 +120,11 @@ def backtest_bot(
 
     candles = _fetch_candles(payload)
 
-    runner = _build_runner(bot, payload.symbol, payload.starting_cash)
-    backtester = Backtester(runner)
-    result = backtester.run(candles)
+    try:
+        runner = _build_runner(bot, payload.symbol, payload.starting_cash)
+        backtester = Backtester(runner)
+        result = backtester.run(candles)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Backtest failed: {exc}") from exc
+
     return _to_response(result)
