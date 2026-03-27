@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+import backend.config as settings
 from backend.bots.strategies.macd import MACDStrategy
 from backend.engine.models import Candle, Portfolio
 
@@ -153,7 +154,7 @@ def test_bullish_crossover_triggers_buy() -> None:
     assert len(buys) > 0, "Expected at least one BUY signal in bullish crossover series"
 
 
-def test_buy_quantity_is_95_percent_of_cash() -> None:
+def test_buy_quantity_uses_max_position_size() -> None:
     fast, slow, signal = 3, 6, 3
     s = MACDStrategy(symbol=SYMBOL, fast=fast, slow=slow, signal=signal)
     closes = _make_bullish_crossover_series(fast, slow, signal)
@@ -161,7 +162,7 @@ def test_buy_quantity_is_95_percent_of_cash() -> None:
     for i in range(len(closes)):
         result = s.on_candle(_candles(closes[: i + 1]), _portfolio(cash=cash))
         if result.action_type == "BUY":
-            expected = (cash * 0.95) / closes[i]
+            expected = (cash * settings.MAX_POSITION_SIZE) / closes[i]
             assert result.quantity == pytest.approx(expected)
             return
     pytest.fail("No BUY signal produced")

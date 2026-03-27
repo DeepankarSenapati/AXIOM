@@ -1,3 +1,4 @@
+import backend.config as settings
 from backend.bots.strategies.base import BaseStrategy
 from backend.engine.models import Action, Candle, Portfolio
 
@@ -35,7 +36,7 @@ class RSIStrategy(BaseStrategy):
         held = portfolio.positions.get(self.symbol, 0.0)
 
         if rsi < self.oversold:
-            quantity = (portfolio.cash * 0.95) / candles[-1].close
+            quantity = (portfolio.cash * settings.MAX_POSITION_SIZE) / candles[-1].close
             if quantity <= 0:
                 return Action(
                     action_type="HOLD",

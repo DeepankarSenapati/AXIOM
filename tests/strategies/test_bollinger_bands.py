@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+import backend.config as settings
 from backend.bots.strategies.bollinger_bands import BollingerBandsStrategy
 from backend.engine.models import Action, Candle, Portfolio
 
@@ -132,7 +133,7 @@ def test_buy_when_price_touches_lower_band() -> None:
     assert result.action_type == "BUY"
 
 
-def test_buy_quantity_uses_95_percent_of_cash() -> None:
+def test_buy_quantity_uses_max_position_size() -> None:
     s = _strategy(window=10, num_std=2.0)
     history = [100.0, 102.0, 98.0, 101.0, 99.0,
                100.0, 102.0, 98.0, 101.0, 99.0]
@@ -141,7 +142,7 @@ def test_buy_quantity_uses_95_percent_of_cash() -> None:
     candles.append(_candle(lower, len(history)))
     cash = 10_000.0
     result = s.on_candle(candles, _portfolio(cash=cash))
-    assert result.quantity == pytest.approx((cash * 0.95) / lower)
+    assert result.quantity == pytest.approx((cash * settings.MAX_POSITION_SIZE) / lower)
 
 
 def test_buy_hold_when_cash_is_zero() -> None:

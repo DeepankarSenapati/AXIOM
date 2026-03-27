@@ -11,6 +11,7 @@ STAGE3_CONSECUTIVE_QUARTERS: int = 4
 
 # Bot defaults
 DEFAULT_STARTING_CASH: float = 10_000.0
+MAX_POSITION_SIZE: float = 0.30  # never risk more than 30% of available cash per trade
 
 # DB
 DATABASE_URL: str = "sqlite:///./axiom.db"

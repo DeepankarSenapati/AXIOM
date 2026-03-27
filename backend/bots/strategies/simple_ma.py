@@ -1,3 +1,4 @@
+import backend.config as settings
 from backend.bots.strategies.base import BaseStrategy
 from backend.engine.models import Action, Candle, Portfolio
 
@@ -45,7 +46,7 @@ class SimpleMovingAverageStrategy(BaseStrategy):
 
         # Golden cross: short crosses above long
         if prev_short_ma <= prev_long_ma and short_ma > long_ma:
-            quantity = (portfolio.cash * 0.95) / candles[-1].close
+            quantity = (portfolio.cash * settings.MAX_POSITION_SIZE) / candles[-1].close
             if quantity <= 0:
                 return Action(
                     action_type="HOLD",

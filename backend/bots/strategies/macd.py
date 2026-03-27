@@ -1,3 +1,4 @@
+import backend.config as settings
 from backend.bots.strategies.base import BaseStrategy
 from backend.engine.models import Action, Candle, Portfolio
 
@@ -67,7 +68,7 @@ class MACDStrategy(BaseStrategy):
 
         # Bullish crossover: histogram flips from negative to positive
         if prev_hist <= 0 and current_hist > 0:
-            quantity = (portfolio.cash * 0.95) / price
+            quantity = (portfolio.cash * settings.MAX_POSITION_SIZE) / price
             if quantity <= 0:
                 return Action(
                     action_type="HOLD",
