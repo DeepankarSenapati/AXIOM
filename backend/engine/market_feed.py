@@ -1,8 +1,17 @@
 import csv
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Literal
+
+import ccxt
 
 from backend.engine.models import Candle
+
+VALID_TIMEFRAMES = ("1h", "4h", "1d")
+
+
+class MarketFeedError(Exception):
+    pass
 
 
 class MockMarketFeed:
@@ -58,4 +67,54 @@ class MockMarketFeed:
                         volume=float(row["volume"]),
                     )
                 )
+        return candles
+
+
+class CCXTFeed:
+    """Fetches public read-only historical OHLCV data from Binance via CCXT.
+
+    No API keys required. No orders. No real money. Phase 1 safe.
+    """
+
+    def __init__(self) -> None:
+        self._exchange = ccxt.binance({"enableRateLimit": True})
+
+    def fetch_historical(
+        self,
+        symbol: str = "BTC/USDT",
+        timeframe: Literal["1h", "4h", "1d"] = "1d",
+        limit: int = 100,
+    ) -> list[Candle]:
+        if timeframe not in VALID_TIMEFRAMES:
+            raise MarketFeedError(
+                f"Invalid timeframe '{timeframe}'. Must be one of {VALID_TIMEFRAMES}."
+            )
+        try:
+            raw: list[list] = self._exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        except ccxt.BadSymbol as exc:
+            raise MarketFeedError(f"Unknown symbol '{symbol}': {exc}") from exc
+        except ccxt.NetworkError as exc:
+            raise MarketFeedError(f"Network error fetching '{symbol}': {exc}") from exc
+        except ccxt.BaseError as exc:
+            raise MarketFeedError(f"CCXT error fetching '{symbol}': {exc}") from exc
+
+        if not raw:
+            raise MarketFeedError(
+                f"No data returned for symbol '{symbol}' timeframe '{timeframe}'."
+            )
+
+        candles: list[Candle] = []
+        for row in raw:
+            ts_ms, open_, high, low, close, volume = row
+            candles.append(
+                Candle(
+                    symbol=symbol,
+                    timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
+                    open=float(open_),
+                    high=float(high),
+                    low=float(low),
+                    close=float(close),
+                    volume=float(volume),
+                )
+            )
         return candles

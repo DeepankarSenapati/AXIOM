@@ -306,6 +306,8 @@ export default function BotArena() {
   const [btCandles, setBtCandles] = useState(100);
   const [btStartPrice, setBtStartPrice] = useState(50000);
   const [btCash, setBtCash] = useState(10000);
+  const [btDataSource, setBtDataSource] = useState("mock");
+  const [btTimeframe, setBtTimeframe] = useState("1d");
   const [btResult, setBtResult] = useState(null);
   const [btLoading, setBtLoading] = useState(false);
   const [btError, setBtError] = useState(null);
@@ -315,6 +317,8 @@ export default function BotArena() {
   const [arenaCandles, setArenaCandles] = useState(100);
   const [arenaStartPrice, setArenaStartPrice] = useState(50000);
   const [arenaCash, setArenaCash] = useState(10000);
+  const [arenaDataSource, setArenaDataSource] = useState("mock");
+  const [arenaTimeframe, setArenaTimeframe] = useState("1d");
   const [arenaResult, setArenaResult] = useState(null);
   const [arenaLoading, setArenaLoading] = useState(false);
   const [arenaError, setArenaError] = useState(null);
@@ -327,37 +331,62 @@ export default function BotArena() {
       .finally(() => setBotsLoading(false));
   }, []);
 
-  function handleBacktest(e) {
+  async function handleBacktest(e) {
     e.preventDefault();
     setBtLoading(true); setBtError(null); setBtResult(null);
-    fetch(`/arena/backtest/${btBotId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bot_ids: [btBotId], symbol: btSymbol, num_candles: Number(btCandles), start_price: Number(btStartPrice), starting_cash: Number(btCash) }),
-    })
-      .then((r) => { if (!r.ok) return r.json().then((d) => { throw new Error(d.detail || `HTTP ${r.status}`); }); return r.json(); })
-      .then(setBtResult)
-      .catch((e) => setBtError(e.message))
-      .finally(() => setBtLoading(false));
+    try {
+      const res = await fetch(`/arena/backtest/${btBotId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: btSymbol,
+          num_candles: Number(btCandles),
+          start_price: Number(btStartPrice),
+          starting_cash: Number(btCash),
+          data_source: btDataSource,
+          timeframe: btTimeframe,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setBtError(JSON.stringify(data.detail || data)); return; }
+      setBtResult(data);
+    } catch (e) {
+      setBtError(e.message || "Network error");
+    } finally {
+      setBtLoading(false);
+    }
   }
 
   function toggleArenaBot(id) {
     setArenaSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   }
 
-  function handleArena(e) {
+  async function handleArena(e) {
     e.preventDefault();
     if (arenaSelectedIds.length === 0) return;
     setArenaLoading(true); setArenaError(null); setArenaResult(null);
-    fetch("/arena/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bot_ids: arenaSelectedIds, symbol: arenaSymbol, num_candles: Number(arenaCandles), start_price: Number(arenaStartPrice), starting_cash: Number(arenaCash) }),
-    })
-      .then((r) => { if (!r.ok) return r.json().then((d) => { throw new Error(d.detail || `HTTP ${r.status}`); }); return r.json(); })
-      .then(setArenaResult)
-      .catch((e) => setArenaError(e.message))
-      .finally(() => setArenaLoading(false));
+    try {
+      const res = await fetch("/arena/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bot_ids: arenaSelectedIds,
+          symbol: arenaSymbol,
+          num_candles: Number(arenaCandles),
+          start_price: Number(arenaStartPrice),
+          starting_cash: Number(arenaCash),
+          data_source: arenaDataSource,
+          timeframe: arenaTimeframe,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setArenaError(JSON.stringify(data.detail || data)); return; }
+      setArenaResult(data);
+    } catch (e) {
+      setArenaError(e.message || "Network error");
+    } finally {
+      setArenaLoading(false);
+    }
   }
 
   const noBots = !botsLoading && bots.length === 0;
@@ -372,18 +401,42 @@ export default function BotArena() {
         {botsLoading && <p className="text-sm text-gray-500">Loading bots…</p>}
         {noBots && <p className="text-sm text-gray-500">No bots found. Create one on the Dashboard first.</p>}
         {!botsLoading && !noBots && (
-          <form onSubmit={handleBacktest} className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <div>
-              <label className="label">Bot</label>
-              <select className="input" value={btBotId} onChange={(e) => setBtBotId(e.target.value)}>
-                {bots.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.strategy_name})</option>)}
-              </select>
+          <form onSubmit={handleBacktest} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <div>
+                <label className="label">Bot</label>
+                <select className="input" value={btBotId} onChange={(e) => setBtBotId(e.target.value)}>
+                  {bots.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.strategy_name})</option>)}
+                </select>
+              </div>
+              <div><label className="label">Symbol</label><input className="input" value={btSymbol} onChange={(e) => setBtSymbol(e.target.value)} /></div>
+              <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={btCandles} onChange={(e) => setBtCandles(e.target.value)} /></div>
+              <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={btStartPrice} onChange={(e) => setBtStartPrice(e.target.value)} disabled={btDataSource === "live"} /></div>
+              <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={btCash} onChange={(e) => setBtCash(e.target.value)} /></div>
+              <div>
+                <label className="label">Data Source</label>
+                <select className="input" value={btDataSource} onChange={(e) => setBtDataSource(e.target.value)}>
+                  <option value="mock">Mock (simulated)</option>
+                  <option value="live">Live (Binance)</option>
+                </select>
+              </div>
+              {btDataSource === "live" && (
+                <div>
+                  <label className="label">Timeframe</label>
+                  <select className="input" value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value)}>
+                    <option value="1h">1 Hour</option>
+                    <option value="4h">4 Hours</option>
+                    <option value="1d">1 Day</option>
+                  </select>
+                </div>
+              )}
             </div>
-            <div><label className="label">Symbol</label><input className="input" value={btSymbol} onChange={(e) => setBtSymbol(e.target.value)} /></div>
-            <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={btCandles} onChange={(e) => setBtCandles(e.target.value)} /></div>
-            <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={btStartPrice} onChange={(e) => setBtStartPrice(e.target.value)} /></div>
-            <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={btCash} onChange={(e) => setBtCash(e.target.value)} /></div>
-            <div className="flex items-end"><button type="submit" className="btn-primary w-full" disabled={btLoading}>{btLoading ? "Running…" : "Run Backtest"}</button></div>
+            {btDataSource === "live" && (
+              <p className="text-xs text-indigo-400">Using real BTC/USDT data from Binance</p>
+            )}
+            <div className="flex items-center gap-3">
+              <button type="submit" className="btn-primary" disabled={btLoading}>{btLoading ? "Running…" : "Run Backtest"}</button>
+            </div>
           </form>
         )}
         {btError && <p className="text-sm text-red-400">{btError}</p>}
@@ -432,9 +485,29 @@ export default function BotArena() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div><label className="label">Symbol</label><input className="input" value={arenaSymbol} onChange={(e) => setArenaSymbol(e.target.value)} /></div>
               <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={arenaCandles} onChange={(e) => setArenaCandles(e.target.value)} /></div>
-              <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={arenaStartPrice} onChange={(e) => setArenaStartPrice(e.target.value)} /></div>
+              <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={arenaStartPrice} onChange={(e) => setArenaStartPrice(e.target.value)} disabled={arenaDataSource === "live"} /></div>
               <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={arenaCash} onChange={(e) => setArenaCash(e.target.value)} /></div>
+              <div>
+                <label className="label">Data Source</label>
+                <select className="input" value={arenaDataSource} onChange={(e) => setArenaDataSource(e.target.value)}>
+                  <option value="mock">Mock (simulated)</option>
+                  <option value="live">Live (Binance)</option>
+                </select>
+              </div>
+              {arenaDataSource === "live" && (
+                <div>
+                  <label className="label">Timeframe</label>
+                  <select className="input" value={arenaTimeframe} onChange={(e) => setArenaTimeframe(e.target.value)}>
+                    <option value="1h">1 Hour</option>
+                    <option value="4h">4 Hours</option>
+                    <option value="1d">1 Day</option>
+                  </select>
+                </div>
+              )}
             </div>
+            {arenaDataSource === "live" && (
+              <p className="text-xs text-indigo-400">Using real BTC/USDT data from Binance</p>
+            )}
             <button type="submit" className="btn-primary" disabled={arenaLoading || arenaSelectedIds.length === 0}>
               {arenaLoading ? "Running Arena…" : `Run Arena (${arenaSelectedIds.length} bot${arenaSelectedIds.length !== 1 ? "s" : ""})`}
             </button>

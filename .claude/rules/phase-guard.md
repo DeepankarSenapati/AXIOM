@@ -10,11 +10,12 @@
 ✅ Mock market data feed
 ✅ Bot registry + validator
 ✅ Two example strategies (MovingAverage, RSI)
+✅ CCXT read-only historical data (public endpoints, no API keys, no orders)
 
 ## Phase 2 — NOT YET
 ❌ Real blockchain / Solidity smart contracts
-❌ Real exchange connectivity (Binance, Coinbase, Kraken)
-❌ CCXT live data (read-only market data is OK for testing)
+❌ Real exchange connectivity (Binance, Coinbase, Kraken) — live orders, real money
+❌ CCXT live trading / real orders (read-only historical data via CCXT is ✅ Phase 1 OK)
 ❌ KYC / AML
 ❌ Celery task queue
 ❌ PostgreSQL (stay on SQLite)

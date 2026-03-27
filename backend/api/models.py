@@ -39,6 +39,17 @@ class RunArenaRequest(BaseModel):
     num_candles: int = 100
     start_price: float = 100.0
     starting_cash: float = 10_000.0
+    data_source: Literal["mock", "live"] = "mock"
+    timeframe: Literal["1h", "4h", "1d"] = "1d"
+
+
+class BacktestRequest(BaseModel):
+    symbol: str = "BTC/USDT"
+    num_candles: int = 100
+    start_price: float = 50_000.0
+    starting_cash: float = 10_000.0
+    data_source: Literal["mock", "live"] = "mock"
+    timeframe: Literal["1h", "4h", "1d"] = "1d"
 
 
 class TradeRecordResponse(BaseModel):
