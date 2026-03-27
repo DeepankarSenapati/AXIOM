@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const STRATEGIES = ["simple_ma", "rsi", "bollinger_bands", "macd"];
+const STRATEGIES = ["simple_ma", "rsi", "bollinger_bands", "macd", "momentum"];
 
 function useBots() {
   const [bots, setBots] = useState([]);
@@ -40,6 +40,7 @@ function StrategyBadges() {
     rsi: "RSI",
     bollinger_bands: "BB",
     macd: "MACD",
+    momentum: "MOM",
   };
   return (
     <div className="flex flex-wrap gap-1 mt-1">
@@ -144,8 +145,8 @@ export default function Dashboard() {
         </StatCard>
         <StatCard
           label="Total Strategies"
-          value={4}
-          sub="MA · RSI · BB · MACD"
+          value={5}
+          sub="MA · RSI · BB · MACD · MOM"
         />
       </div>
 

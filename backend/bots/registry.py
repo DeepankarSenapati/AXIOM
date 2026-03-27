@@ -6,6 +6,7 @@ Any new strategy must be added here to be usable via the API and arena.
 from backend.bots.strategies.base import BaseStrategy
 from backend.bots.strategies.bollinger_bands import BollingerBandsStrategy
 from backend.bots.strategies.macd import MACDStrategy
+from backend.bots.strategies.momentum import MomentumStrategy
 from backend.bots.strategies.rsi import RSIStrategy
 from backend.bots.strategies.simple_ma import SimpleMovingAverageStrategy
 
@@ -14,6 +15,7 @@ STRATEGY_MAP: dict[str, type[BaseStrategy]] = {
     "rsi": RSIStrategy,
     "bollinger_bands": BollingerBandsStrategy,
     "macd": MACDStrategy,
+    "momentum": MomentumStrategy,
 }
 
 
