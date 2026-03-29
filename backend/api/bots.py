@@ -21,6 +21,7 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)) -> BotResponse
         id=str(uuid.uuid4()),
         name=payload.name,
         strategy_name=payload.strategy_key,
+        params=dict(payload.params) if payload.params else None,
         created_at=datetime.now(tz=timezone.utc),
         is_active=True,
     )

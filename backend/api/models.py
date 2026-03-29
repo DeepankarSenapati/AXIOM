@@ -79,6 +79,25 @@ class ArenaResultResponse(BaseModel):
     results: dict[str, BacktestResultResponse]
 
 
+class BacktestRunResponse(BaseModel):
+    id: str
+    bot_id: str
+    bot_name: str
+    strategy_key: str
+    symbol: str
+    timeframe: str
+    data_source: str
+    num_candles: int
+    starting_cash: float
+    final_pnl: float
+    end_cash: float
+    total_trades: int
+    win_rate: float
+    sharpe_ratio: float
+    max_drawdown: float
+    created_at: datetime
+
+
 # ── Tokenomics ────────────────────────────────────────────────────────────────
 
 class InitTokensRequest(BaseModel):

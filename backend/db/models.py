@@ -1,6 +1,7 @@
 from datetime import datetime
+from uuid import uuid4
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.session import Base
@@ -12,6 +13,7 @@ class DBBot(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     strategy_name: Mapped[str] = mapped_column(String, nullable=False)
+    params: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -82,3 +84,24 @@ class DBSatisfactionPoll(Base):
     closed_at: Mapped[datetime] = mapped_column(nullable=False)
 
     bot: Mapped["DBBot"] = relationship("DBBot", back_populates="polls")
+
+
+class DBBacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    bot_id: Mapped[str] = mapped_column(String, nullable=False)
+    bot_name: Mapped[str] = mapped_column(String, nullable=False)
+    strategy_key: Mapped[str] = mapped_column(String, nullable=False)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    timeframe: Mapped[str] = mapped_column(String, nullable=False)
+    data_source: Mapped[str] = mapped_column(String, nullable=False)
+    num_candles: Mapped[int] = mapped_column(Integer, nullable=False)
+    starting_cash: Mapped[float] = mapped_column(Float, nullable=False)
+    final_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    end_cash: Mapped[float] = mapped_column(Float, nullable=False)
+    total_trades: Mapped[int] = mapped_column(Integer, nullable=False)
+    win_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    sharpe_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    max_drawdown: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

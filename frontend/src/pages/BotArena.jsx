@@ -11,12 +11,18 @@ const BOT_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#a85
 
 const CRYPTO_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"];
 const INDIAN_SYMBOLS = [
-  { value: "RELIANCE.NS", label: "RELIANCE.NS — Reliance Industries" },
-  { value: "TCS.NS",      label: "TCS.NS — Tata Consultancy Services" },
-  { value: "INFY.NS",     label: "INFY.NS — Infosys" },
-  { value: "HDFCBANK.NS", label: "HDFCBANK.NS — HDFC Bank" },
-  { value: "WIPRO.NS",    label: "WIPRO.NS — Wipro" },
-  { value: "^NSEI",       label: "^NSEI — NIFTY 50 Index" },
+  { value: "RELIANCE.NS",   label: "RELIANCE.NS — Reliance Industries" },
+  { value: "TCS.NS",        label: "TCS.NS — Tata Consultancy Services" },
+  { value: "INFY.NS",       label: "INFY.NS — Infosys" },
+  { value: "HDFCBANK.NS",   label: "HDFCBANK.NS — HDFC Bank" },
+  { value: "WIPRO.NS",      label: "WIPRO.NS — Wipro" },
+  { value: "^NSEI",         label: "^NSEI — NIFTY 50 Index" },
+  { value: "TATAMOTORS.NS", label: "TATAMOTORS.NS — Tata Motors" },
+  { value: "BAJFINANCE.NS", label: "BAJFINANCE.NS — Bajaj Finance" },
+  { value: "ICICIBANK.NS",  label: "ICICIBANK.NS — ICICI Bank" },
+  { value: "ADANIENT.NS",   label: "ADANIENT.NS — Adani Enterprises" },
+  { value: "SBIN.NS",       label: "SBIN.NS — State Bank of India" },
+  { value: "HINDUNILVR.NS", label: "HINDUNILVR.NS — Hindustan Unilever" },
 ];
 
 function isIndian(symbol) {
@@ -44,6 +50,20 @@ function PnlBadge({ value }) {
   if (value > 0) return <span className="badge badge-green">+{value.toFixed(2)}</span>;
   if (value < 0) return <span className="badge badge-red">{value.toFixed(2)}</span>;
   return <span className="badge badge-yellow">0.00</span>;
+}
+
+function Spinner() {
+  return (
+    <div className="flex items-center gap-3 py-8 justify-center">
+      <div style={{
+        width: 32, height: 32, border: '4px solid #334155',
+        borderTopColor: '#6366f1', borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite'
+      }} />
+      <span className="text-slate-400 text-sm">Running simulation...</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 }
 
 function winRate(records) {
@@ -528,6 +548,7 @@ function BotArenaPage() {
           </form>
         )}
         {btError && <p className="text-sm text-red-400">{btError}</p>}
+        {btLoading && <Spinner />}
         {btResult && (
           <div className="space-y-4 pt-2 border-t border-gray-800">
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -614,6 +635,7 @@ function BotArenaPage() {
           </form>
         )}
         {arenaError && <p className="text-sm text-red-400">{arenaError}</p>}
+        {arenaLoading && <Spinner />}
         {arenaResult && (
           <>
             <ArenaComparison results={arenaResult.results} bots={bots} startCash={Number(arenaCash) || 10000} />

@@ -2,6 +2,14 @@ import { useEffect, useState } from "react";
 
 const STRATEGIES = ["simple_ma", "rsi", "bollinger_bands", "macd", "momentum"];
 
+const STRATEGY_PARAMS = {
+  simple_ma: { short_window: 5, long_window: 20 },
+  rsi: { period: 14, oversold: 30, overbought: 70 },
+  bollinger_bands: { window: 20, num_std: 2.0 },
+  macd: { fast: 12, slow: 26, signal: 9 },
+  momentum: { window: 10, threshold: 0.02, stop_loss: 0.03 },
+};
+
 function useBots() {
   const [bots, setBots] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,27 +59,93 @@ function StrategyBadges() {
   );
 }
 
-function TopPerformerCard({ bots }) {
-  if (bots.length === 0) {
-    return (
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-300 mb-3">Top Performer</h2>
-        <p className="text-sm text-gray-500">
-          Run the arena on the <span className="text-indigo-400">Bot Arena</span> page to see performance rankings here.
-        </p>
-      </div>
-    );
+function TopPerformerCard() {
+  const [best, setBest] = useState(null);
+  const [fetching, setFetching] = useState(true);
+
+  useEffect(() => {
+    setFetching(true);
+    fetch("/arena/history/best")
+      .then((r) => {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        console.log("[TopPerformerCard] fetch result:", data);
+        setBest(data);
+      })
+      .catch((e) => {
+        console.error("[TopPerformerCard] fetch error:", e);
+        setBest(null);
+      })
+      .finally(() => setFetching(false));
+  }, []);
+
+  const strategyLabel = {
+    simple_ma: "MA",
+    rsi: "RSI",
+    bollinger_bands: "BB",
+    macd: "MACD",
+    momentum: "MOM",
+  };
+
+  function formatDate(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("en-US", {
+      year: "numeric", month: "short", day: "numeric",
+    });
   }
+
+  function formatCurrency(val) {
+    const n = Number(val ?? 0);
+    const abs = Math.abs(n).toFixed(2);
+    return n >= 0 ? `+$${abs}` : `-$${abs}`;
+  }
+
   return (
     <div className="card">
       <h2 className="text-sm font-semibold text-gray-300 mb-3">Top Performer</h2>
-      <p className="text-sm text-gray-500">
-        No backtest results stored yet —{" "}
-        <span className="text-indigo-400">Bot Arena</span> to run a simulation.
-      </p>
-      <p className="text-xs text-gray-600 mt-2">
-        {bots.length} bot{bots.length !== 1 ? "s" : ""} available to compete.
-      </p>
+      {fetching && (
+        <p className="text-sm text-gray-500">Loading…</p>
+      )}
+      {!fetching && !best && (
+        <p className="text-sm text-gray-500">
+          No runs yet — go to <span className="text-indigo-400">Bot Arena</span>
+        </p>
+      )}
+      {!fetching && best && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base font-bold text-gray-100">{best.bot_name}</span>
+            <span className="badge badge-blue">
+              {strategyLabel[best.strategy_key] ?? best.strategy_key}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <p className="text-xs text-gray-500">Best PnL</p>
+              <p className={`text-lg font-semibold font-mono ${Number(best.final_pnl) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {formatCurrency(best.final_pnl)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Symbol</p>
+              <p className="text-sm font-mono text-gray-200">{best.symbol}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Sharpe Ratio</p>
+              <p className={`text-sm font-mono ${Number(best.sharpe_ratio) >= 1 ? "text-emerald-400" : Number(best.sharpe_ratio) < 0 ? "text-red-400" : "text-gray-300"}`}>
+                {Number(best.sharpe_ratio ?? 0).toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Run Date</p>
+              <p className="text-sm text-gray-400">{formatDate(best.created_at)}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -79,12 +153,22 @@ function TopPerformerCard({ bots }) {
 export default function Dashboard() {
   const { bots, loading, error, refetch } = useBots();
   const [form, setForm] = useState({ name: "", strategy_key: "simple_ma" });
+  const [botParams, setBotParams] = useState({ ...STRATEGY_PARAMS["simple_ma"] });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [deactivating, setDeactivating] = useState(null);
 
   const totalBots = bots.length;
   const totalActive = bots.filter((b) => b.is_active).length;
+
+  function handleStrategyChange(newStrategy) {
+    setForm({ ...form, strategy_key: newStrategy });
+    setBotParams({ ...STRATEGY_PARAMS[newStrategy] });
+  }
+
+  function handleParamChange(key, value) {
+    setBotParams({ ...botParams, [key]: Number(value) });
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -95,7 +179,11 @@ export default function Dashboard() {
       const res = await fetch("/bots/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, strategy_key: form.strategy_key }),
+        body: JSON.stringify({
+          name: form.name,
+          strategy_key: form.strategy_key,
+          params: botParams,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -103,6 +191,7 @@ export default function Dashboard() {
         return;
       }
       setForm({ name: "", strategy_key: "simple_ma" });
+      setBotParams({ ...STRATEGY_PARAMS["simple_ma"] });
       refetch();
     } catch (e) {
       setCreateError(e.message || "Network error");
@@ -118,6 +207,8 @@ export default function Dashboard() {
       .catch(console.error)
       .finally(() => setDeactivating(null));
   }
+
+  const currentParams = STRATEGY_PARAMS[form.strategy_key] || {};
 
   return (
     <div className="p-6 space-y-6">
@@ -151,35 +242,60 @@ export default function Dashboard() {
       </div>
 
       {/* Top Performer */}
-      <TopPerformerCard bots={bots} />
+      <TopPerformerCard />
 
       {/* Create bot */}
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-300 mb-3">Register New Bot</h2>
-        <form onSubmit={handleCreate} className="flex gap-3 items-end">
-          <div className="flex-1">
-            <label className="label">Bot Name</label>
-            <input
-              className="input"
-              placeholder="e.g. Alpha-MA"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-            />
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="label">Bot Name</label>
+              <input
+                className="input"
+                placeholder="e.g. Alpha-MA"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+            </div>
+            <div className="w-40">
+              <label className="label">Strategy</label>
+              <select
+                className="input"
+                value={form.strategy_key}
+                onChange={(e) => handleStrategyChange(e.target.value)}
+              >
+                {STRATEGIES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <button type="submit" className="btn-primary" disabled={creating}>
+              {creating ? "Creating…" : "Create Bot"}
+            </button>
           </div>
-          <div className="w-40">
-            <label className="label">Strategy</label>
-            <select
-              className="input"
-              value={form.strategy_key}
-              onChange={(e) => setForm({ ...form, strategy_key: e.target.value })}
-            >
-              {STRATEGIES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <button type="submit" className="btn-primary" disabled={creating}>
-            {creating ? "Creating…" : "Create Bot"}
-          </button>
+
+          {/* Strategy parameter inputs */}
+          {Object.keys(currentParams).length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                Strategy Parameters
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(currentParams).map(([key]) => (
+                  <div key={key} className="flex flex-col gap-1">
+                    <label className="label text-xs">{key}</label>
+                    <input
+                      type="number"
+                      className="input w-28"
+                      step="any"
+                      value={botParams[key] ?? currentParams[key]}
+                      onChange={(e) => handleParamChange(key, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </form>
         {createError && <p className="mt-2 text-xs text-red-400">{createError}</p>}
       </div>
