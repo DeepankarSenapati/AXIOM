@@ -78,15 +78,17 @@ def _persist_run(
     bot: DBBot,
     result: BacktestResult,
     payload: RunArenaRequest | BacktestRequest,
+    symbol: str | None = None,
 ) -> None:
     """Insert one DBBacktestRun row for the given result. Append-only."""
+    effective_symbol = symbol if symbol is not None else payload.symbol
     win_rate = _compute_win_rate(result)
     run = DBBacktestRun(
         id=str(uuid4()),
         bot_id=bot.id,
         bot_name=bot.name,
         strategy_key=bot.strategy_name,
-        symbol=payload.symbol,
+        symbol=effective_symbol,
         timeframe=payload.timeframe,
         data_source=payload.data_source,
         num_candles=payload.num_candles,
@@ -140,7 +142,10 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
     candles = _fetch_candles(payload)
 
     try:
-        runners = [(bot.id, _build_runner(bot, payload.symbol, payload.starting_cash)) for bot in bots]
+        runners = [
+            (bot.id, _build_runner(bot, payload.bot_symbols.get(bot.id, payload.symbol), payload.starting_cash))
+            for bot in bots
+        ]
         arena = Arena(bots=runners)
         arena_result = arena.run(candles)
     except Exception as exc:
@@ -148,7 +153,8 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
 
     bot_map: dict[str, DBBot] = {b.id: b for b in bots}
     for bot_id, result in arena_result.results.items():
-        _persist_run(db, bot_map[bot_id], result, payload)
+        bot_symbol = payload.bot_symbols.get(bot_id, payload.symbol)
+        _persist_run(db, bot_map[bot_id], result, payload, symbol=bot_symbol)
 
     return ArenaResultResponse(
         results={bot_id: _to_response(result) for bot_id, result in arena_result.results.items()}
@@ -200,14 +206,22 @@ def _run_to_response(run: DBBacktestRun) -> BacktestRunResponse:
 
 
 @router.get("/history", response_model=list[BacktestRunResponse])
-def get_history(db: Session = Depends(get_db)) -> list[BacktestRunResponse]:
-    """Return the last 50 backtest/arena runs ordered by created_at descending."""
-    runs = (
-        db.query(DBBacktestRun)
-        .order_by(DBBacktestRun.created_at.desc())
-        .limit(50)
-        .all()
-    )
+def get_history(
+    bot_id: str | None = None,
+    symbol: str | None = None,
+    strategy_key: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+) -> list[BacktestRunResponse]:
+    """Return backtest/arena runs ordered by created_at descending, with optional filters."""
+    q = db.query(DBBacktestRun)
+    if bot_id:
+        q = q.filter(DBBacktestRun.bot_id == bot_id)
+    if symbol:
+        q = q.filter(DBBacktestRun.symbol == symbol)
+    if strategy_key:
+        q = q.filter(DBBacktestRun.strategy_key == strategy_key)
+    runs = q.order_by(DBBacktestRun.created_at.desc()).limit(limit).all()
     return [_run_to_response(r) for r in runs]
 
 
@@ -221,4 +235,13 @@ def get_best_run(db: Session = Depends(get_db)) -> BacktestRunResponse:
     )
     if run is None:
         raise HTTPException(status_code=404, detail="No backtest runs recorded yet")
+    return _run_to_response(run)
+
+
+@router.get("/history/{run_id}", response_model=BacktestRunResponse)
+def get_history_run(run_id: str, db: Session = Depends(get_db)) -> BacktestRunResponse:
+    """Return a single backtest/arena run by its ID."""
+    run = db.query(DBBacktestRun).filter(DBBacktestRun.id == run_id).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     return _run_to_response(run)

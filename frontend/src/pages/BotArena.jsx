@@ -43,6 +43,58 @@ function SymbolSelect({ value, onChange }) {
 }
 
 // ---------------------------------------------------------------------------
+// CSV export helpers
+// ---------------------------------------------------------------------------
+
+function exportArenaCSV(summary) {
+  const header = ["Rank", "Bot", "Strategy", "Final PnL", "End Cash", "Trades", "Win Rate", "Sharpe", "Max DD"];
+  const lines = [
+    header.join(","),
+    ...summary.map((r, idx) => [
+      idx + 1,
+      `"${r.name}"`,
+      `"${r.strategy}"`,
+      r.finalPnl.toFixed(2),
+      r.endCash.toFixed(2),
+      r.trades,
+      r.winRate !== null ? r.winRate + "%" : "—",
+      r.sharpe.toFixed(2),
+      (r.maxDrawdown * 100).toFixed(2) + "%",
+    ].join(",")),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `axiom_arena_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportBacktestCSV(records) {
+  const header = ["Date", "Action", "Price", "Qty", "PnL", "Cash After", "Reason"];
+  const lines = [
+    header.join(","),
+    ...records.map((r) => [
+      `"${new Date(r.timestamp).toLocaleString()}"`,
+      r.action_type,
+      Number(r.price ?? 0).toFixed(2),
+      Number(r.quantity ?? 0).toFixed(4),
+      Number(r.pnl ?? 0).toFixed(2),
+      Number(r.cash_after ?? 0).toFixed(2),
+      `"${(r.reason ?? "").replace(/"/g, "'")}"`,
+    ].join(",")),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `axiom_backtest_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
@@ -184,7 +236,7 @@ function ArenaComparison({ results, bots, startCash }) {
     );
   };
 
-  // Summary table data
+  // Summary table data — sorted by final PnL descending
   const summary = entries.map(([botId, res], idx) => {
     const bot = bots.find((b) => b.id === botId);
     const wr = winRate(res.trade_records);
@@ -243,7 +295,16 @@ function ArenaComparison({ results, bots, startCash }) {
 
       {/* Summary comparison table */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-300">Results Summary</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-300">Results Summary</h3>
+          <button
+            type="button"
+            onClick={() => exportArenaCSV(summary)}
+            className="px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 transition-colors"
+          >
+            Export CSV
+          </button>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -302,7 +363,7 @@ function ArenaComparison({ results, bots, startCash }) {
 // Trade log table
 // ---------------------------------------------------------------------------
 
-function TradeTable({ records }) {
+function TradeTable({ records, showExportCSV = false }) {
   const [expanded, setExpanded] = useState(false);
   if (!records || records.length === 0) return <p className="text-sm text-gray-500">No trades recorded.</p>;
 
@@ -312,11 +373,22 @@ function TradeTable({ records }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-medium text-gray-400">Trade Log</h4>
-        {records.length > 10 && (
-          <button onClick={() => setExpanded((e) => !e)} className="text-xs text-indigo-400 hover:text-indigo-300">
-            {expanded ? "Show less" : `Show all ${records.length}`}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {showExportCSV && (
+            <button
+              type="button"
+              onClick={() => exportBacktestCSV(records)}
+              className="px-2 py-0.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 transition-colors"
+            >
+              Export CSV
+            </button>
+          )}
+          {records.length > 10 && (
+            <button onClick={() => setExpanded((e) => !e)} className="text-xs text-indigo-400 hover:text-indigo-300">
+              {expanded ? "Show less" : `Show all ${records.length}`}
+            </button>
+          )}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -419,6 +491,9 @@ function BotArenaPage() {
   const [arenaLoading, setArenaLoading] = useState(false);
   const [arenaError, setArenaError] = useState(null);
 
+  // Per-bot symbol overrides: maps bot_id -> symbol string (empty = use global)
+  const [botSymbols, setBotSymbols] = useState({});
+
   const safeNum = (val, fallback) => { const n = parseFloat(val); return isNaN(n) ? fallback : n; };
 
   useEffect(() => {
@@ -457,12 +532,37 @@ function BotArenaPage() {
 
   function toggleArenaBot(id) {
     setArenaSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    // Clean up any override when bot is deselected
+    setBotSymbols((prev) => {
+      if (arenaSelectedIds.includes(id)) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return prev;
+    });
+  }
+
+  function setBotSymbolOverride(botId, symbol) {
+    setBotSymbols((prev) => {
+      if (!symbol) {
+        const next = { ...prev };
+        delete next[botId];
+        return next;
+      }
+      return { ...prev, [botId]: symbol };
+    });
   }
 
   async function handleArena(e) {
     e.preventDefault();
     if (arenaSelectedIds.length === 0) return;
     setArenaLoading(true); setArenaError(null); setArenaResult(null);
+    // Only include overrides that are non-empty
+    const activeOverrides = {};
+    Object.entries(botSymbols).forEach(([id, sym]) => {
+      if (sym && arenaSelectedIds.includes(id)) activeOverrides[id] = sym;
+    });
     try {
       const res = await fetch("/arena/run", {
         method: "POST",
@@ -475,6 +575,7 @@ function BotArenaPage() {
           starting_cash: safeNum(arenaCash, 10000),
           data_source: arenaDataSource,
           timeframe: arenaTimeframe,
+          ...(Object.keys(activeOverrides).length > 0 ? { bot_symbols: activeOverrides } : {}),
         }),
       });
       const data = await res.json();
@@ -488,6 +589,7 @@ function BotArenaPage() {
   }
 
   const noBots = !botsLoading && bots.length === 0;
+  const selectedBots = bots.filter((b) => arenaSelectedIds.includes(b.id));
 
   return (
     <div className="p-6 space-y-8">
@@ -567,7 +669,7 @@ function BotArenaPage() {
               ))}
             </div>
             <EquityCurve records={btResult.trade_records} startCash={Number(btResult.start_cash) || 10000} />
-            <TradeTable records={btResult.trade_records} />
+            <TradeTable records={btResult.trade_records} showExportCSV={true} />
           </div>
         )}
       </div>
@@ -593,6 +695,37 @@ function BotArenaPage() {
                 })}
               </div>
             </div>
+
+            {/* Per-bot symbol overrides */}
+            {selectedBots.length > 0 && (
+              <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Per-bot symbol overrides (optional)</p>
+                <p className="text-xs text-gray-500">Leave blank to use the global symbol below. Set a different symbol to run that bot on a separate market.</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {selectedBots.map((bot) => (
+                    <div key={bot.id} className="flex items-center gap-2">
+                      <label className="text-xs text-gray-300 whitespace-nowrap min-w-0 flex-shrink-0 w-32 truncate" title={`Override symbol for ${bot.name}`}>
+                        {bot.name}:
+                      </label>
+                      <select
+                        className="input text-xs py-1 flex-1"
+                        value={botSymbols[bot.id] ?? ""}
+                        onChange={(e) => setBotSymbolOverride(bot.id, e.target.value)}
+                      >
+                        <option value="">— use global —</option>
+                        <optgroup label="Crypto (via Binance)">
+                          {CRYPTO_SYMBOLS.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </optgroup>
+                        <optgroup label="Indian Stocks (via NSE)">
+                          {INDIAN_SYMBOLS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </optgroup>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div>
                 <label className="label">Symbol</label>

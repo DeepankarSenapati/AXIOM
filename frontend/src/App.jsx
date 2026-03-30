@@ -3,10 +3,12 @@ import Dashboard from "./pages/Dashboard.jsx";
 import BotArena from "./pages/BotArena.jsx";
 import Tokenomics from "./pages/Tokenomics.jsx";
 import Governance from "./pages/Governance.jsx";
+import History from "./pages/History.jsx";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: "⬛" },
   { to: "/arena", label: "Bot Arena", icon: "⚔️" },
+  { to: "/history", label: "History", icon: "🕐" },
   { to: "/tokenomics", label: "Tokenomics", icon: "🪙" },
   { to: "/governance", label: "Governance", icon: "🗳️" },
 ];
@@ -49,6 +51,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/arena" element={<BotArena />} />
+          <Route path="/history" element={<History />} />
           <Route path="/tokenomics" element={<Tokenomics />} />
           <Route path="/governance" element={<Governance />} />
         </Routes>

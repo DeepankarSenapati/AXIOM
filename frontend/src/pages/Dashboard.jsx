@@ -10,6 +10,24 @@ const STRATEGY_PARAMS = {
   momentum: { window: 10, threshold: 0.02, stop_loss: 0.03 },
 };
 
+function useBotHistory() {
+  const [historyByBot, setHistoryByBot] = useState({});
+  useEffect(() => {
+    fetch("/arena/history?limit=500")
+      .then(r => r.ok ? r.json() : [])
+      .then(runs => {
+        const grouped = {};
+        for (const run of runs) {
+          if (!grouped[run.bot_id]) grouped[run.bot_id] = [];
+          grouped[run.bot_id].push(run);
+        }
+        setHistoryByBot(grouped);
+      })
+      .catch(() => {});
+  }, []);
+  return historyByBot;
+}
+
 function useBots() {
   const [bots, setBots] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -152,6 +170,7 @@ function TopPerformerCard() {
 
 export default function Dashboard() {
   const { bots, loading, error, refetch } = useBots();
+  const historyByBot = useBotHistory();
   const [form, setForm] = useState({ name: "", strategy_key: "simple_ma" });
   const [botParams, setBotParams] = useState({ ...STRATEGY_PARAMS["simple_ma"] });
   const [creating, setCreating] = useState(false);
@@ -315,6 +334,8 @@ export default function Dashboard() {
                 <th className="th">Name</th>
                 <th className="th">Strategy</th>
                 <th className="th">Status</th>
+                <th className="th">Runs</th>
+                <th className="th">Best PnL</th>
                 <th className="th">Created</th>
                 <th className="th">ID</th>
                 <th className="th"></th>
@@ -329,6 +350,24 @@ export default function Dashboard() {
                     {bot.is_active
                       ? <span className="badge badge-green">Active</span>
                       : <span className="badge badge-red">Inactive</span>}
+                  </td>
+                  <td className="td">
+                    <span className="badge bg-gray-700 text-gray-400">
+                      {historyByBot[bot.id]?.length ?? 0}
+                    </span>
+                  </td>
+                  <td className="td">
+                    {(() => {
+                      const runs = historyByBot[bot.id];
+                      if (!runs || runs.length === 0) {
+                        return <span className="text-gray-600">—</span>;
+                      }
+                      const bestPnl = Math.max(...runs.map(r => Number(r.final_pnl ?? 0)));
+                      const abs = Math.abs(bestPnl).toFixed(2);
+                      return bestPnl >= 0
+                        ? <span className="badge badge-green font-mono">+${abs}</span>
+                        : <span className="badge badge-red font-mono">-${abs}</span>;
+                    })()}
                   </td>
                   <td className="td text-gray-500">{new Date(bot.created_at).toLocaleDateString()}</td>
                   <td className="td font-mono text-xs text-gray-600">{bot.id.slice(0, 8)}…</td>

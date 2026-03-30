@@ -41,6 +41,7 @@ class RunArenaRequest(BaseModel):
     starting_cash: float = 10_000.0
     data_source: Literal["mock", "live"] = "mock"
     timeframe: Literal["1h", "4h", "1d"] = "1d"
+    bot_symbols: dict[str, str] = {}
 
 
 class BacktestRequest(BaseModel):
