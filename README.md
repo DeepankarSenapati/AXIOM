@@ -35,14 +35,14 @@ AXIOM/
 │   ├── engine/         # BotRunner, Backtester, Arena, MarketFeed
 │   ├── tokenomics/     # TokenLedger, Distributor
 │   ├── governance/     # StageManager, VotingManager
-│   ├── bots/           # Strategy registry, BaseStrategy, Moving Average, RSI, Bollinger Bands & MACD strategies
+│   ├── bots/           # Strategy registry, BaseStrategy, 5 strategies (MA, RSI, BB, MACD, Momentum)
 │   ├── api/            # FastAPI routers
 │   ├── db/             # SQLAlchemy models, session management
 │   ├── config.py       # All constants (token splits, governance thresholds)
 │   └── main.py         # Application entry point
 ├── frontend/
 │   └── src/
-│       └── pages/      # Dashboard, BotArena, Tokenomics, Governance
+│       └── pages/      # Dashboard, BotArena, History, Tokenomics, Governance
 ├── tests/              # pytest test suite
 ├── requirements.txt
 └── README.md
@@ -114,7 +114,48 @@ The dashboard will be available at `http://localhost:5173`.
 pytest tests/ -v
 ```
 
-125 tests passing across engine, tokenomics, governance, and all four strategies.
+148 tests passing across engine, tokenomics, governance, and all five strategies.
+
+---
+
+## Current Status
+
+**Phase 1 MVP — fully working local simulation.**
+
+148 tests passing. Features shipped:
+
+- 5 trading strategies: Moving Average, RSI, Bollinger Bands, MACD, Momentum
+- Strategy parameter tuning on bot creation (per-strategy configurable defaults)
+- Multi-bot arena with head-to-head equity curve comparison
+- Per-bot symbol overrides — run each bot on a different market in the same arena run
+- Blind backtesting engine with Sharpe ratio and max drawdown metrics
+- Persistent backtest history with Top Performer dashboard card
+- Backtest history page with filters (strategy, symbol, data source) and sortable columns
+- CSV export for arena results and individual trade logs
+- Real crypto data: BTC, ETH, SOL, BNB, XRP via Binance (CCXT, public read-only)
+- Real Indian NSE stocks: 12 symbols including RELIANCE.NS, TCS.NS, INFY.NS, HDFCBANK.NS, and NIFTY 50 index
+- Simulated tokenomics: 70/15/15 RST split, revenue distribution, ledger
+- Progressive governance: 3-stage system with satisfaction polls and automatic transitions
+- Request logging with per-route timing to `app.log`
+
+---
+
+## Roadmap
+
+### Phase 2 (planned)
+- Real blockchain / Solidity smart contracts
+- Real exchange connectivity — live orders, real money
+- PostgreSQL (migrate from SQLite)
+- Celery task queue for async backtests
+- KYC / AML
+- Email / notifications
+- No-code visual bot builder UI
+
+### Phase 3 (future)
+- Real money / real orders at scale
+- Public token offerings
+- Regulatory filings
+- Mobile app
 
 ---
 

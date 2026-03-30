@@ -18,10 +18,11 @@ function SortIcon({ dir }) {
 
 const ALL_STRATEGIES = [
   { value: "", label: "All Strategies" },
-  { value: "moving_average", label: "Moving Average" },
+  { value: "simple_ma", label: "Moving Average" },
   { value: "rsi", label: "RSI" },
   { value: "macd", label: "MACD" },
-  { value: "bollinger", label: "Bollinger Bands" },
+  { value: "bollinger_bands", label: "Bollinger Bands" },
+  { value: "momentum", label: "Momentum" },
 ];
 
 const DATA_SOURCES = [

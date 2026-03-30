@@ -1,4 +1,4 @@
-import { Component, useEffect, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
 import {
   AreaChart, Area,
   LineChart, Line,
@@ -280,7 +280,7 @@ function ArenaComparison({ results, bots, startCash }) {
                   key={botId}
                   type="monotone"
                   dataKey={botId}
-                  name={botId}
+                  name={bots.find((b) => b.id === botId)?.name ?? botId.slice(0, 8)}
                   stroke={BOT_COLORS[idx % BOT_COLORS.length]}
                   strokeWidth={2}
                   dot={false}
@@ -493,6 +493,7 @@ function BotArenaPage() {
 
   // Per-bot symbol overrides: maps bot_id -> symbol string (empty = use global)
   const [botSymbols, setBotSymbols] = useState({});
+  const arenaResultsRef = useRef(null);
 
   const safeNum = (val, fallback) => { const n = parseFloat(val); return isNaN(n) ? fallback : n; };
 
@@ -581,6 +582,7 @@ function BotArenaPage() {
       const data = await res.json();
       if (!res.ok) { setArenaError(JSON.stringify(data.detail || data)); return; }
       setArenaResult(data);
+      setTimeout(() => arenaResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (e) {
       setArenaError(e.message || "Network error");
     } finally {
@@ -771,6 +773,7 @@ function BotArenaPage() {
         {arenaLoading && <Spinner />}
         {arenaResult && (
           <>
+            <div ref={arenaResultsRef} />
             <ArenaComparison results={arenaResult.results} bots={bots} startCash={Number(arenaCash) || 10000} />
             {/* Individual trade logs, collapsible per bot */}
             <div className="space-y-4 pt-2 border-t border-gray-800">

@@ -173,6 +173,7 @@ export default function Dashboard() {
   const historyByBot = useBotHistory();
   const [form, setForm] = useState({ name: "", strategy_key: "simple_ma" });
   const [botParams, setBotParams] = useState({ ...STRATEGY_PARAMS["simple_ma"] });
+  const [paramErrors, setParamErrors] = useState({});
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [deactivating, setDeactivating] = useState(null);
@@ -183,10 +184,14 @@ export default function Dashboard() {
   function handleStrategyChange(newStrategy) {
     setForm({ ...form, strategy_key: newStrategy });
     setBotParams({ ...STRATEGY_PARAMS[newStrategy] });
+    setParamErrors({});
   }
 
   function handleParamChange(key, value) {
-    setBotParams({ ...botParams, [key]: Number(value) });
+    const n = parseFloat(value);
+    const invalid = isNaN(n) || n <= 0;
+    setParamErrors((prev) => ({ ...prev, [key]: invalid }));
+    setBotParams({ ...botParams, [key]: invalid ? value : n });
   }
 
   async function handleCreate(e) {
@@ -211,6 +216,7 @@ export default function Dashboard() {
       }
       setForm({ name: "", strategy_key: "simple_ma" });
       setBotParams({ ...STRATEGY_PARAMS["simple_ma"] });
+      setParamErrors({});
       refetch();
     } catch (e) {
       setCreateError(e.message || "Network error");
@@ -305,11 +311,15 @@ export default function Dashboard() {
                     <label className="label text-xs">{key}</label>
                     <input
                       type="number"
-                      className="input w-28"
+                      className={`input w-28 ${paramErrors[key] ? "border-red-500 focus:border-red-500" : ""}`}
                       step="any"
+                      min="0"
                       value={botParams[key] ?? currentParams[key]}
                       onChange={(e) => handleParamChange(key, e.target.value)}
                     />
+                    {paramErrors[key] && (
+                      <p className="text-xs text-red-400 mt-0.5">Must be &gt; 0</p>
+                    )}
                   </div>
                 ))}
               </div>
