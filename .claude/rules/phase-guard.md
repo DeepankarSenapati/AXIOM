@@ -11,6 +11,12 @@
 ✅ Bot registry + validator
 ✅ Two example strategies (MovingAverage, RSI)
 ✅ CCXT read-only historical data (public endpoints, no API keys, no orders)
+✅ JWT authentication (simulated users, SQLite-backed, no external auth provider)
+✅ RBAC — role-based access control (e.g. admin, trader, viewer roles)
+✅ User accounts and login system (local only, no email verification)
+✅ Bot listing workflow with approval (admin approves submitted bots before they run)
+✅ Simulated token purchases (fake money, no blockchain, no real payment processor)
+✅ Separate role-based dashboards (different UI views per role)
 
 ## Phase 2 — NOT YET
 ❌ Real blockchain / Solidity smart contracts
@@ -19,8 +25,9 @@
 ❌ KYC / AML
 ❌ Celery task queue
 ❌ PostgreSQL (stay on SQLite)
-❌ Email / notifications
+❌ Email / notifications (SMTP, SendGrid, etc.)
 ❌ No-code visual bot builder UI
+❌ Real payment processing (Stripe, crypto payments)
 
 ## Phase 3 — FUTURE
 ❌ Real money / real orders

@@ -7,6 +7,19 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.session import Base
 
 
+class DBUser(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False)  # admin | tech_company | governance_company | token_holder
+    company_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    wallet_balance: Mapped[float] = mapped_column(Float, default=10000.0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class DBBot(Base):
     __tablename__ = "bots"
 

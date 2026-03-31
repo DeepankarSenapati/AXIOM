@@ -5,8 +5,9 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import arena, bots, governance, tokenomics
-from backend.db.session import init_db
+from backend.api import arena, auth, bots, governance, tokenomics
+from backend.db.seed import seed_users
+from backend.db.session import get_db, init_db
 
 # ---------------------------------------------------------------------------
 # Logging setup — file + console, configured once at import time
@@ -66,8 +67,14 @@ def on_startup() -> None:
     logger.info("AXIOM starting up — initialising database")
     init_db()
     logger.info("Database ready")
+    db = next(get_db())
+    try:
+        seed_users(db)
+    finally:
+        db.close()
 
 
+app.include_router(auth.router)
 app.include_router(bots.router)
 app.include_router(arena.router)
 app.include_router(tokenomics.router)
