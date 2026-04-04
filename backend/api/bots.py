@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.api.models import BotCreate, BotResponse
-from backend.db.models import DBBot
+from backend.auth.dependencies import get_current_user
+from backend.db.models import DBBot, DBUser
 from backend.db.session import get_db
 
 router = APIRouter(prefix="/bots", tags=["bots"])
@@ -16,14 +17,21 @@ class BotNotFoundError(Exception):
 
 
 @router.post("/", response_model=BotResponse, status_code=201)
-def create_bot(payload: BotCreate, db: Session = Depends(get_db)) -> BotResponse:
+def create_bot(
+    payload: BotCreate,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+) -> BotResponse:
     bot = DBBot(
         id=str(uuid.uuid4()),
         name=payload.name,
         strategy_name=payload.strategy_key,
         params=dict(payload.params) if payload.params else None,
         created_at=datetime.now(tz=timezone.utc),
-        is_active=True,
+        is_active=False,
+        status="pending_approval",
+        tech_company_id=current_user.id,
+        description=payload.description,
     )
     db.add(bot)
     db.commit()
@@ -34,12 +42,14 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)) -> BotResponse
         strategy_name=bot.strategy_name,
         created_at=bot.created_at,
         is_active=bot.is_active,
+        status=bot.status,
+        description=bot.description,
     )
 
 
 @router.get("/", response_model=list[BotResponse])
 def list_bots(db: Session = Depends(get_db)) -> list[BotResponse]:
-    bots = db.query(DBBot).filter(DBBot.is_active == True).all()  # noqa: E712
+    bots = db.query(DBBot).order_by(DBBot.created_at.desc()).all()
     return [
         BotResponse(
             id=b.id,
@@ -47,6 +57,8 @@ def list_bots(db: Session = Depends(get_db)) -> list[BotResponse]:
             strategy_name=b.strategy_name,
             created_at=b.created_at,
             is_active=b.is_active,
+            status=b.status,
+            description=b.description,
         )
         for b in bots
     ]
@@ -63,6 +75,8 @@ def get_bot(bot_id: str, db: Session = Depends(get_db)) -> BotResponse:
         strategy_name=bot.strategy_name,
         created_at=bot.created_at,
         is_active=bot.is_active,
+        status=bot.status,
+        description=bot.description,
     )
 
 

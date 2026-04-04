@@ -14,6 +14,7 @@ class BotCreate(BaseModel):
     strategy_key: str
     params: dict[str, float | int | str] = {}
     starting_cash: float = 10_000.0
+    description: str | None = None
 
     @field_validator("strategy_key")
     @classmethod
@@ -29,6 +30,37 @@ class BotResponse(BaseModel):
     strategy_name: str
     created_at: datetime
     is_active: bool
+    status: str = "pending_approval"
+    description: str | None = None
+
+
+class AdminBotResponse(BaseModel):
+    id: str
+    name: str
+    strategy_name: str
+    status: str
+    tech_company_id: str | None
+    description: str | None
+    created_at: datetime
+    is_active: bool
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    role: str
+    company_name: str | None
+    wallet_balance: float
+    is_active: bool
+    created_at: datetime
+
+
+class PlatformStatsResponse(BaseModel):
+    total_bots: int
+    pending_approval: int
+    total_users: int
+    users_by_role: dict[str, int]
+    total_backtest_runs: int
 
 
 # ── Arena / Backtest ──────────────────────────────────────────────────────────

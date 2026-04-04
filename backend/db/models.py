@@ -29,6 +29,12 @@ class DBBot(Base):
     params: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Approval workflow — values: pending_approval | approved | live | rejected
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending_approval")
+    # ID of the tech_company user who submitted this bot
+    tech_company_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Optional human-readable description supplied at submission time
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
 
     trades: Mapped[list["DBTrade"]] = relationship("DBTrade", back_populates="bot")
     tokens: Mapped[list["DBToken"]] = relationship("DBToken", back_populates="bot")

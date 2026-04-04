@@ -47,7 +47,7 @@ export function roleHome(role) {
   const map = {
     admin: "/admin",
     tech_company: "/tech",
-    governance_company: "/governance",
+    governance_company: "/governance-co",
     token_holder: "/market",
   };
   return map[role] ?? "/dashboard";

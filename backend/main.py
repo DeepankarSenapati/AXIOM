@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import arena, auth, bots, governance, tokenomics
+from backend.api import admin, arena, auth, bots, governance, tokenomics
 from backend.db.seed import seed_users
 from backend.db.session import get_db, init_db
 
@@ -79,6 +79,7 @@ app.include_router(bots.router)
 app.include_router(arena.router)
 app.include_router(tokenomics.router)
 app.include_router(governance.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")
