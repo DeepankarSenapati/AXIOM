@@ -1,7 +1,68 @@
-venv/
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# ── Local database (generated on first run) ───────────────────────────────────
 *.db
+*.sqlite
+*.sqlite3
+
+# ── Logs (generated at runtime) ───────────────────────────────────────────────
+*.log
+logs/
+
+# ── Environment variables (never commit secrets) ──────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# ── Testing / coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+
+# ── Frontend — Node / Vite ────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# ── OS-generated files ────────────────────────────────────────────────────────
 .DS_Store
-app.log
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*~
+*.bak
+
+# ── Generated output documents (not source, re-creatable) ────────────────────
+AXIOM_Technical_Document.html

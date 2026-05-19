@@ -19,6 +19,7 @@ class PollResult(BaseModel):
     total_weight: float
     stage_at_close: int
     closed_at: datetime
+    vote_count: int = 0
 
 
 class VoteSubmission(BaseModel):

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authHeaders, getUser } from "../auth.js";
+import { apiFetch } from "../auth.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,6 +26,13 @@ function fmt(iso) {
   });
 }
 
+function fmtMoney(n) {
+  return Number(n ?? 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function StatusBadge({ status }) {
   const map = {
     pending_approval: "badge-yellow",
@@ -41,54 +48,139 @@ function StatusBadge({ status }) {
 }
 
 // ---------------------------------------------------------------------------
-// Section A — My Bots
+// Section A — Summary Stat Cards
 // ---------------------------------------------------------------------------
 
-function MyBots({ bots, loading, error }) {
+function SummaryCards({ summary, loading }) {
+  const cards = [
+    {
+      label: "Total Earned (15%)",
+      value: loading ? "—" : `$${fmtMoney(summary?.total_your_earnings ?? 0)}`,
+      sub: "your cut across all distributions",
+      accent: "text-emerald-400",
+    },
+    {
+      label: "Active Bots",
+      value: loading ? "—" : (summary?.approved_bots ?? 0),
+      sub: `of ${summary?.total_bots ?? 0} submitted`,
+      accent: "text-gray-100",
+    },
+    {
+      label: "Token Investors",
+      value: loading ? "—" : (summary?.total_token_holders ?? 0),
+      sub: "unique RST holders across your bots",
+      accent: "text-indigo-400",
+    },
+    {
+      label: "Distributions Paid",
+      value: loading ? "—" : (summary?.total_distributions ?? 0),
+      sub: "revenue events processed",
+      accent: "text-gray-100",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {cards.map(({ label, value, sub, accent }) => (
+        <div key={label} className="card flex flex-col gap-1">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
+          <p className={`text-3xl font-bold font-mono ${accent}`}>{value}</p>
+          <p className="text-xs text-gray-600">{sub}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section B — My Bots + Earnings (merged)
+// ---------------------------------------------------------------------------
+
+function MyBotsEarnings({ bots, loading, error }) {
   return (
     <div className="card">
-      <h2 className="text-sm font-semibold text-gray-300 mb-3">My Bots</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-300">My Bots</h2>
+        <p className="text-xs text-gray-600">15% of each distribution is yours</p>
+      </div>
+
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
       {error && <p className="text-sm text-red-400">Error: {error}</p>}
       {!loading && !error && bots.length === 0 && (
-        <p className="text-sm text-gray-500">You haven&#39;t submitted any bots yet</p>
+        <p className="text-sm text-gray-500">You haven't submitted any bots yet.</p>
       )}
+
       {bots.length > 0 && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800">
-              <th className="th">Name</th>
-              <th className="th">Strategy</th>
-              <th className="th">Status</th>
-              <th className="th">Description</th>
-              <th className="th">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bots.map(bot => (
-              <tr key={bot.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                <td className="td font-medium text-gray-100">{bot.name}</td>
-                <td className="td">
-                  <span className="badge badge-blue">{bot.strategy_key ?? bot.strategy_name}</span>
-                </td>
-                <td className="td">
-                  <StatusBadge status={bot.status} />
-                </td>
-                <td className="td text-gray-400 max-w-xs truncate">
-                  {bot.description || <span className="text-gray-600">—</span>}
-                </td>
-                <td className="td text-gray-500">{fmt(bot.created_at)}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-800">
+                <th className="th">Bot Name</th>
+                <th className="th">Strategy</th>
+                <th className="th">Status</th>
+                <th className="th">Revenue Distributed</th>
+                <th className="th">Your 15%</th>
+                <th className="th">Investors</th>
+                <th className="th">RST Circulating</th>
+                <th className="th">Distributions</th>
+                <th className="th">Submitted</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {bots.map(bot => (
+                <tr key={bot.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                  <td className="td">
+                    <div>
+                      <p className="font-medium text-gray-100">{bot.name}</p>
+                      {bot.description && (
+                        <p className="text-xs text-gray-500 truncate max-w-[180px]">{bot.description}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="td">
+                    <span className="badge badge-blue">{bot.strategy_key}</span>
+                  </td>
+                  <td className="td">
+                    <StatusBadge status={bot.status} />
+                  </td>
+                  <td className="td font-mono text-gray-300">
+                    {bot.total_revenue_distributed > 0
+                      ? `$${fmtMoney(bot.total_revenue_distributed)}`
+                      : <span className="text-gray-600">—</span>}
+                  </td>
+                  <td className="td font-mono font-semibold">
+                    {bot.your_earnings > 0
+                      ? <span className="text-emerald-400">${fmtMoney(bot.your_earnings)}</span>
+                      : <span className="text-gray-600">—</span>}
+                  </td>
+                  <td className="td text-center font-mono text-gray-300">
+                    {bot.token_holder_count > 0
+                      ? bot.token_holder_count
+                      : <span className="text-gray-600">0</span>}
+                  </td>
+                  <td className="td font-mono text-gray-400">
+                    {bot.tokens_in_circulation > 0
+                      ? bot.tokens_in_circulation.toLocaleString()
+                      : <span className="text-gray-600">0</span>}
+                  </td>
+                  <td className="td text-center font-mono text-gray-400">
+                    {bot.distribution_count > 0
+                      ? bot.distribution_count
+                      : <span className="text-gray-600">0</span>}
+                  </td>
+                  <td className="td text-gray-500">{fmt(bot.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Section B — Submit New Bot
+// Section C — Submit New Bot (unchanged)
 // ---------------------------------------------------------------------------
 
 function SubmitBot({ onBotCreated }) {
@@ -120,9 +212,9 @@ function SubmitBot({ onBotCreated }) {
     setSuccessMsg(null);
 
     try {
-      const res = await fetch("/bots/", {
+      const res = await apiFetch("/bots/", {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(),
           strategy_key: form.strategy_key,
@@ -163,7 +255,6 @@ function SubmitBot({ onBotCreated }) {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Name + Strategy row */}
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[160px]">
             <label className="label">Bot Name</label>
@@ -187,7 +278,6 @@ function SubmitBot({ onBotCreated }) {
           </div>
         </div>
 
-        {/* Description */}
         <div>
           <label className="label">Description</label>
           <textarea
@@ -198,7 +288,6 @@ function SubmitBot({ onBotCreated }) {
           />
         </div>
 
-        {/* Strategy parameters */}
         {Object.keys(currentParams).length > 0 && (
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
@@ -234,94 +323,23 @@ function SubmitBot({ onBotCreated }) {
 }
 
 // ---------------------------------------------------------------------------
-// Section C — Revenue Summary
-// ---------------------------------------------------------------------------
-
-function RevenueSummary({ bots }) {
-  const [revenues, setRevenues] = useState({});
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (bots.length === 0) return;
-    setLoading(true);
-    const headers = authHeaders();
-
-    Promise.all(
-      bots.map(bot =>
-        fetch(`/tokenomics/balances/${bot.id}`, { headers })
-          .then(r => r.ok ? r.json() : null)
-          .then(data => ({ id: bot.id, data }))
-          .catch(() => ({ id: bot.id, data: null }))
-      )
-    ).then(results => {
-      const map = {};
-      for (const { id, data } of results) {
-        map[id] = data;
-      }
-      setRevenues(map);
-      setLoading(false);
-    });
-  }, [bots]);
-
-  if (bots.length === 0) {
-    return (
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-300 mb-3">Revenue Summary</h2>
-        <p className="text-sm text-gray-500">No revenue data yet</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card">
-      <h2 className="text-sm font-semibold text-gray-300 mb-1">Revenue Summary</h2>
-      <p className="text-xs text-gray-600 mb-3">Tech company share (15%) per bot</p>
-      {loading && <p className="text-sm text-gray-500">Loading…</p>}
-      {!loading && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800">
-              <th className="th">Bot Name</th>
-              <th className="th">Revenue Earned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bots.map(bot => {
-              const d = revenues[bot.id];
-              const earned = d?.tech_balance ?? d?.tech_wallet ?? null;
-              return (
-                <tr key={bot.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                  <td className="td font-medium text-gray-100">{bot.name}</td>
-                  <td className="td font-mono text-gray-300">
-                    {earned !== null && earned !== undefined
-                      ? `$${Number(earned).toFixed(2)}`
-                      : <span className="text-gray-600">—</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export default function TechDashboard() {
   const [bots, setBots] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  async function fetchBots() {
+  async function fetchDashboard() {
     setLoading(true);
     try {
-      const res = await fetch("/bots/", { headers: authHeaders() });
+      const res = await apiFetch("/tech/my-dashboard");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setBots(await res.json());
+      const data = await res.json();
+      setBots(data.bots ?? []);
+      setSummary(data.summary ?? null);
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -330,28 +348,33 @@ export default function TechDashboard() {
     }
   }
 
-  useEffect(() => { fetchBots(); }, []);
+  useEffect(() => { fetchDashboard(); }, []);
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-100">Tech Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-100">Tech Dashboard</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            Your bots earn you 15% of every revenue distribution — automatically.
+          </p>
+        </div>
         <button
-          onClick={fetchBots}
+          onClick={fetchDashboard}
           className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm"
         >
           Refresh
         </button>
       </div>
 
-      {/* A — My Bots */}
-      <MyBots bots={bots} loading={loading} error={error} />
+      {/* A — Summary Cards */}
+      <SummaryCards summary={summary} loading={loading} />
 
-      {/* B — Submit New Bot */}
-      <SubmitBot onBotCreated={fetchBots} />
+      {/* B — My Bots + Earnings */}
+      <MyBotsEarnings bots={bots} loading={loading} error={error} />
 
-      {/* C — Revenue Summary */}
-      <RevenueSummary bots={bots} />
+      {/* C — Submit New Bot */}
+      <SubmitBot onBotCreated={fetchDashboard} />
     </div>
   );
 }

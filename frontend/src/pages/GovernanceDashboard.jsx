@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authHeaders } from "../auth.js";
+import { apiFetch } from "../auth.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -85,7 +85,7 @@ function SatisfactionPolls({ bots }) {
     setLoading(true);
     Promise.all(
       bots.map(bot =>
-        fetch(`/governance/${bot.id}/polls`, { headers: authHeaders() })
+        apiFetch(`/governance/${bot.id}/polls`)
           .then(r => (r.ok ? r.json() : []))
           .then(polls => ({ botId: bot.id, botName: bot.name, polls }))
           .catch(() => ({ botId: bot.id, botName: bot.name, polls: [] }))
@@ -192,7 +192,7 @@ export default function GovernanceDashboard() {
   async function fetchBots() {
     setLoading(true);
     try {
-      const res = await fetch("/bots/", { headers: authHeaders() });
+      const res = await apiFetch("/bots/");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBots(await res.json());
       setError(null);

@@ -123,4 +123,50 @@ class DBBacktestRun(Base):
     win_rate: Mapped[float] = mapped_column(Float, nullable=False)
     sharpe_ratio: Mapped[float] = mapped_column(Float, nullable=False)
     max_drawdown: Mapped[float] = mapped_column(Float, nullable=False)
+    benchmark_pnl: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class DBGovernanceAudit(Base):
+    __tablename__ = "governance_audits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bot_id: Mapped[str] = mapped_column(String, ForeignKey("bots.id"), nullable=False)
+    quarter: Mapped[str] = mapped_column(String, nullable=False)
+    submitted_by: Mapped[str] = mapped_column(String, nullable=False)
+    finding: Mapped[str] = mapped_column(String, nullable=False)
+    recommendation: Mapped[str] = mapped_column(String, nullable=False)
+    severity: Mapped[str] = mapped_column(String, nullable=False, default="medium")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class DBDistributionEvent(Base):
+    __tablename__ = "distribution_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bot_id: Mapped[str] = mapped_column(String, ForeignKey("bots.id"), nullable=False)
+    total_revenue: Mapped[float] = mapped_column(Float, nullable=False)
+    platform_fee: Mapped[float] = mapped_column(Float, nullable=False)
+    distributable: Mapped[float] = mapped_column(Float, nullable=False)
+    public_share: Mapped[float] = mapped_column(Float, nullable=False)
+    tech_share: Mapped[float] = mapped_column(Float, nullable=False)
+    gov_share: Mapped[float] = mapped_column(Float, nullable=False)
+    quarter: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    payouts: Mapped[list["DBDistributionPayout"]] = relationship("DBDistributionPayout", back_populates="event")
+
+
+class DBDistributionPayout(Base):
+    __tablename__ = "distribution_payouts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("distribution_events.id"), nullable=False)
+    bot_id: Mapped[str] = mapped_column(String, nullable=False)
+    holder_address: Mapped[str] = mapped_column(String, nullable=False)
+    holder_type: Mapped[str] = mapped_column(String, nullable=False)
+    rst_balance: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    event: Mapped["DBDistributionEvent"] = relationship("DBDistributionEvent", back_populates="payouts")

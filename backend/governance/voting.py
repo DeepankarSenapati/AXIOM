@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db.models import DBGovernanceVote, DBSatisfactionPoll
@@ -95,6 +96,7 @@ class VotingManager:
             total_weight=total_weight,
             stage_at_close=current_stage,
             closed_at=closed_at,
+            vote_count=len(votes),
         )
 
     def get_poll_history(self, bot_id: str) -> list[PollResult]:
@@ -102,6 +104,12 @@ class VotingManager:
             self.db.query(DBSatisfactionPoll)
             .filter(DBSatisfactionPoll.bot_id == bot_id)
             .order_by(DBSatisfactionPoll.quarter.asc())
+            .all()
+        )
+        vote_counts: dict[str, int] = dict(
+            self.db.query(DBGovernanceVote.quarter, func.count(DBGovernanceVote.id))
+            .filter(DBGovernanceVote.bot_id == bot_id)
+            .group_by(DBGovernanceVote.quarter)
             .all()
         )
         return [
@@ -113,6 +121,7 @@ class VotingManager:
                 total_weight=row.total_weight,
                 stage_at_close=row.stage_at_close,
                 closed_at=row.closed_at,
+                vote_count=vote_counts.get(row.quarter, 0),
             )
             for row in rows
         ]

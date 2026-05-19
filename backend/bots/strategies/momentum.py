@@ -1,6 +1,10 @@
+import logging
+
 import backend.config as settings
 from backend.bots.strategies.base import BaseStrategy
 from backend.engine.models import Action, Candle, Portfolio
+
+logger = logging.getLogger(__name__)
 
 
 class MomentumStrategy(BaseStrategy):
@@ -43,6 +47,11 @@ class MomentumStrategy(BaseStrategy):
         held = portfolio.positions.get(self.symbol, 0.0)
 
         # Stop loss: sell if price has dropped stop_loss % below entry
+        if held > 0 and self._entry_price is None:
+            logger.warning(
+                "Bot holding %s but _entry_price is None — skipping stop-loss this candle",
+                self.symbol,
+            )
         if held > 0 and self._entry_price is not None:
             entry = self._entry_price
             drop = (price - entry) / entry

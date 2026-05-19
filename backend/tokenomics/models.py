@@ -21,6 +21,8 @@ class HolderPayout(BaseModel):
 class RevenueDistribution(BaseModel):
     bot_id: str
     total_revenue: float
+    platform_fee: float
+    distributable: float
     public_share: float
     tech_share: float
     gov_share: float

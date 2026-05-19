@@ -47,7 +47,7 @@ function SymbolSelect({ value, onChange }) {
 // ---------------------------------------------------------------------------
 
 function exportArenaCSV(summary) {
-  const header = ["Rank", "Bot", "Strategy", "Final PnL", "End Cash", "Trades", "Win Rate", "Sharpe", "Max DD"];
+  const header = ["Rank", "Bot", "Strategy", "Final PnL", "Buy & Hold", "Alpha", "End Cash", "Trades", "Win Rate", "Sharpe", "Max DD"];
   const lines = [
     header.join(","),
     ...summary.map((r, idx) => [
@@ -55,6 +55,8 @@ function exportArenaCSV(summary) {
       `"${r.name}"`,
       `"${r.strategy}"`,
       r.finalPnl.toFixed(2),
+      r.benchmarkPnl.toFixed(2),
+      r.alpha.toFixed(2),
       r.endCash.toFixed(2),
       r.trades,
       r.winRate !== null ? r.winRate + "%" : "—",
@@ -251,6 +253,8 @@ function ArenaComparison({ results, bots, startCash }) {
       winRate: wr,
       sharpe: Number(res.sharpe_ratio ?? 0),
       maxDrawdown: Number(res.max_drawdown ?? 0),
+      benchmarkPnl: Number(res.benchmark_pnl ?? 0),
+      alpha: Number(res.alpha ?? 0),
       color: BOT_COLORS[idx % BOT_COLORS.length],
     };
   }).sort((a, b) => b.finalPnl - a.finalPnl);
@@ -313,6 +317,8 @@ function ArenaComparison({ results, bots, startCash }) {
                 <th className="th">Bot</th>
                 <th className="th">Strategy</th>
                 <th className="th">Final PnL</th>
+                <th className="th" title="Buy-and-hold baseline for same period">Buy &amp; Hold</th>
+                <th className="th" title="Bot PnL minus buy-and-hold">Alpha</th>
                 <th className="th">End Cash</th>
                 <th className="th">Trades</th>
                 <th className="th">Win Rate</th>
@@ -332,6 +338,8 @@ function ArenaComparison({ results, bots, startCash }) {
                   </td>
                   <td className="td"><span className="badge badge-blue">{s.strategy}</span></td>
                   <td className="td"><PnlBadge value={s.finalPnl} /></td>
+                  <td className="td"><PnlBadge value={s.benchmarkPnl} /></td>
+                  <td className="td"><PnlBadge value={s.alpha} /></td>
                   <td className="td font-mono">${Number(s.endCash ?? 0).toFixed(2)}</td>
                   <td className="td">{s.trades}</td>
                   <td className="td">
@@ -655,16 +663,18 @@ function BotArenaPage() {
         {btLoading && <Spinner />}
         {btResult && (
           <div className="space-y-4 pt-2 border-t border-gray-800">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
               {[
                 { label: "Total Trades", value: btResult.total_trades },
                 { label: "Start Cash", value: `$${Number(btResult.start_cash ?? 0).toFixed(2)}` },
                 { label: "End Cash", value: `$${Number(btResult.end_cash ?? 0).toFixed(2)}` },
                 { label: "Final PnL", value: <PnlBadge value={Number(btResult.final_pnl ?? 0)} /> },
+                { label: "Buy & Hold", value: <PnlBadge value={Number(btResult.benchmark_pnl ?? 0)} />, hint: "buy-and-hold baseline" },
+                { label: "Alpha", value: <PnlBadge value={Number(btResult.alpha ?? 0)} />, hint: "bot PnL minus benchmark" },
                 { label: "Sharpe", value: Number(btResult.sharpe_ratio ?? 0).toFixed(2) },
                 { label: "Max DD", value: `${(Number(btResult.max_drawdown ?? 0) * 100).toFixed(1)}%` },
-              ].map(({ label, value }) => (
-                <div key={label} className="bg-gray-800 rounded p-3">
+              ].map(({ label, value, hint }) => (
+                <div key={label} className="bg-gray-800 rounded p-3" title={hint}>
                   <p className="text-xs text-gray-500">{label}</p>
                   <p className="text-lg font-semibold text-gray-100">{value}</p>
                 </div>

@@ -1,10 +1,11 @@
 """Admin-only endpoints for platform management."""
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.api.models import AdminBotResponse, PlatformStatsResponse, UserResponse
+from backend.api.models import AdminBotResponse, PlatformRevenueResponse, PlatformStatsResponse, UserResponse
 from backend.auth.dependencies import require_role
-from backend.db.models import DBBacktestRun, DBBot, DBUser
+from backend.db.models import DBBacktestRun, DBBot, DBDistributionEvent, DBUser
 from backend.db.session import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -99,6 +100,21 @@ def reject_bot(
         description=bot.description,
         created_at=bot.created_at,
         is_active=bot.is_active,
+    )
+
+
+@router.get("/platform-revenue", response_model=PlatformRevenueResponse)
+def get_platform_revenue(
+    db: Session = Depends(get_db),
+    _: DBUser = Depends(_admin),
+) -> PlatformRevenueResponse:
+    result = db.query(
+        func.coalesce(func.sum(DBDistributionEvent.platform_fee), 0.0).label("total_fees"),
+        func.count(DBDistributionEvent.id).label("event_count"),
+    ).one()
+    return PlatformRevenueResponse(
+        total_fees_collected=round(float(result.total_fees), 4),
+        event_count=int(result.event_count),
     )
 
 

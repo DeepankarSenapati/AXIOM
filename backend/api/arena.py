@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.api.models import (
@@ -9,6 +10,7 @@ from backend.api.models import (
     BacktestRequest,
     BacktestResultResponse,
     BacktestRunResponse,
+    LeaderboardEntryResponse,
     RunArenaRequest,
     TradeRecordResponse,
 )
@@ -19,14 +21,14 @@ from backend.engine.arena import Arena
 from backend.engine.backtester import Backtester
 from backend.engine.bot_runner import BotRunner
 from backend.engine.market_feed import CCXTFeed, MarketFeedError, MockMarketFeed, YFinanceFeed
+from backend.engine.models import BacktestResult
+
+router = APIRouter(prefix="/arena", tags=["arena"])
 
 
 def _is_indian_symbol(symbol: str) -> bool:
     """NSE stocks end with '.NS'; indices start with '^'."""
     return symbol.endswith(".NS") or symbol.startswith("^")
-from backend.engine.models import BacktestResult
-
-router = APIRouter(prefix="/arena", tags=["arena"])
 
 
 def _build_runner(bot: DBBot, symbol: str, starting_cash: float) -> BotRunner:
@@ -58,19 +60,43 @@ def _fetch_candles(payload: RunArenaRequest | BacktestRequest) -> list:
             )
         except MarketFeedError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
+    seed = getattr(payload, "seed", None)
     return MockMarketFeed().generate(
         symbol=payload.symbol,
         n=payload.num_candles,
         start_price=payload.start_price,
+        seed=seed,
     )
 
 
-def _compute_win_rate(result: BacktestResult) -> float:
-    """Return fraction of trades with pnl > 0, or 0.0 if no trades."""
-    if result.total_trades == 0:
+def _calc_benchmark(candles: list, starting_cash: float) -> float:
+    """Buy-and-hold PnL: invest all cash at first candle close, sell at last."""
+    if len(candles) < 2:
         return 0.0
-    winning = sum(1 for r in result.trade_records if r.pnl > 0)
-    return winning / result.total_trades
+    first_price = candles[0].close
+    last_price = candles[-1].close
+    if first_price <= 0:
+        return 0.0
+    shares = starting_cash / first_price
+    return round((last_price - first_price) * shares, 2)
+
+
+def _compute_win_rate(result: BacktestResult) -> float:
+    """Fraction of completed BUY→SELL round trips that were profitable."""
+    trades = [r for r in result.trade_records if r.action_type in ("BUY", "SELL")]
+    if not trades:
+        return 0.0
+    sell_pnl_changes: list[float] = []
+    last_buy_pnl: float | None = None
+    for r in trades:
+        if r.action_type == "BUY":
+            last_buy_pnl = r.pnl
+        elif r.action_type == "SELL" and last_buy_pnl is not None:
+            sell_pnl_changes.append(r.pnl - last_buy_pnl)
+            last_buy_pnl = None
+    if not sell_pnl_changes:
+        return 0.0
+    return sum(1 for p in sell_pnl_changes if p > 0) / len(sell_pnl_changes)
 
 
 def _persist_run(
@@ -79,6 +105,7 @@ def _persist_run(
     result: BacktestResult,
     payload: RunArenaRequest | BacktestRequest,
     symbol: str | None = None,
+    benchmark_pnl: float = 0.0,
 ) -> None:
     """Insert one DBBacktestRun row for the given result. Append-only."""
     effective_symbol = symbol if symbol is not None else payload.symbol
@@ -99,21 +126,26 @@ def _persist_run(
         win_rate=win_rate,
         sharpe_ratio=result.sharpe_ratio,
         max_drawdown=result.max_drawdown,
+        benchmark_pnl=benchmark_pnl,
         created_at=datetime.utcnow(),
     )
     db.add(run)
     db.commit()
 
 
-def _to_response(result: BacktestResult) -> BacktestResultResponse:
+def _to_response(result: BacktestResult, win_rate: float = 0.0, benchmark_pnl: float = 0.0) -> BacktestResultResponse:
+    alpha = round(result.final_pnl - benchmark_pnl, 2)
     return BacktestResultResponse(
         bot_id=result.bot_id,
         total_trades=result.total_trades,
         final_pnl=result.final_pnl,
         start_cash=result.start_cash,
         end_cash=result.end_cash,
+        win_rate=win_rate,
         sharpe_ratio=result.sharpe_ratio,
         max_drawdown=result.max_drawdown,
+        benchmark_pnl=benchmark_pnl,
+        alpha=alpha,
         trade_records=[
             TradeRecordResponse(
                 bot_id=r.bot_id,
@@ -140,6 +172,7 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
         raise HTTPException(status_code=404, detail=f"Bots not found or inactive: {sorted(missing)}")
 
     candles = _fetch_candles(payload)
+    benchmark_pnl = _calc_benchmark(candles, payload.starting_cash)
 
     try:
         runners = [
@@ -154,10 +187,13 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
     bot_map: dict[str, DBBot] = {b.id: b for b in bots}
     for bot_id, result in arena_result.results.items():
         bot_symbol = payload.bot_symbols.get(bot_id, payload.symbol)
-        _persist_run(db, bot_map[bot_id], result, payload, symbol=bot_symbol)
+        _persist_run(db, bot_map[bot_id], result, payload, symbol=bot_symbol, benchmark_pnl=benchmark_pnl)
 
     return ArenaResultResponse(
-        results={bot_id: _to_response(result) for bot_id, result in arena_result.results.items()}
+        results={
+            bot_id: _to_response(result, _compute_win_rate(result), benchmark_pnl)
+            for bot_id, result in arena_result.results.items()
+        }
     )
 
 
@@ -172,6 +208,7 @@ def backtest_bot(
         raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found or inactive")
 
     candles = _fetch_candles(payload)
+    benchmark_pnl = _calc_benchmark(candles, payload.starting_cash)
 
     try:
         runner = _build_runner(bot, payload.symbol, payload.starting_cash)
@@ -180,11 +217,12 @@ def backtest_bot(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Backtest failed: {exc}") from exc
 
-    _persist_run(db, bot, result, payload)
-    return _to_response(result)
+    _persist_run(db, bot, result, payload, benchmark_pnl=benchmark_pnl)
+    return _to_response(result, _compute_win_rate(result), benchmark_pnl)
 
 
 def _run_to_response(run: DBBacktestRun) -> BacktestRunResponse:
+    benchmark_pnl = run.benchmark_pnl if run.benchmark_pnl is not None else 0.0
     return BacktestRunResponse(
         id=run.id,
         bot_id=run.bot_id,
@@ -201,6 +239,8 @@ def _run_to_response(run: DBBacktestRun) -> BacktestRunResponse:
         win_rate=run.win_rate,
         sharpe_ratio=run.sharpe_ratio,
         max_drawdown=run.max_drawdown,
+        benchmark_pnl=benchmark_pnl,
+        alpha=round(run.final_pnl - benchmark_pnl, 2),
         created_at=run.created_at,
     )
 
@@ -245,3 +285,35 @@ def get_history_run(run_id: str, db: Session = Depends(get_db)) -> BacktestRunRe
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     return _run_to_response(run)
+
+
+@router.get("/leaderboard", response_model=list[LeaderboardEntryResponse])
+def get_leaderboard(db: Session = Depends(get_db)) -> list[LeaderboardEntryResponse]:
+    """Return per-strategy aggregated stats ranked by average Sharpe ratio."""
+    rows = (
+        db.query(
+            DBBacktestRun.strategy_key,
+            func.count(DBBacktestRun.id).label("total_runs"),
+            func.avg(DBBacktestRun.sharpe_ratio).label("avg_sharpe"),
+            func.avg(DBBacktestRun.final_pnl).label("avg_pnl"),
+            func.max(DBBacktestRun.final_pnl).label("best_pnl"),
+            func.avg(DBBacktestRun.win_rate).label("avg_win_rate"),
+            func.avg(DBBacktestRun.final_pnl - DBBacktestRun.benchmark_pnl).label("avg_alpha"),
+        )
+        .group_by(DBBacktestRun.strategy_key)
+        .order_by(func.avg(DBBacktestRun.sharpe_ratio).desc())
+        .all()
+    )
+    return [
+        LeaderboardEntryResponse(
+            rank=i + 1,
+            strategy_key=r.strategy_key,
+            total_runs=r.total_runs,
+            avg_sharpe=round(float(r.avg_sharpe or 0), 3),
+            avg_pnl=round(float(r.avg_pnl or 0), 2),
+            best_pnl=round(float(r.best_pnl or 0), 2),
+            avg_win_rate=round(float(r.avg_win_rate or 0), 3),
+            avg_alpha=round(float(r.avg_alpha or 0), 2),
+        )
+        for i, r in enumerate(rows)
+    ]

@@ -74,6 +74,7 @@ class RunArenaRequest(BaseModel):
     data_source: Literal["mock", "live"] = "mock"
     timeframe: Literal["1h", "4h", "1d"] = "1d"
     bot_symbols: dict[str, str] = {}
+    seed: int | None = None
 
 
 class BacktestRequest(BaseModel):
@@ -83,6 +84,7 @@ class BacktestRequest(BaseModel):
     starting_cash: float = 10_000.0
     data_source: Literal["mock", "live"] = "mock"
     timeframe: Literal["1h", "4h", "1d"] = "1d"
+    seed: int | None = None
 
 
 class TradeRecordResponse(BaseModel):
@@ -103,8 +105,11 @@ class BacktestResultResponse(BaseModel):
     final_pnl: float
     start_cash: float
     end_cash: float
+    win_rate: float = 0.0
     sharpe_ratio: float
     max_drawdown: float
+    benchmark_pnl: float = 0.0
+    alpha: float = 0.0
     trade_records: list[TradeRecordResponse]
 
 
@@ -128,6 +133,8 @@ class BacktestRunResponse(BaseModel):
     win_rate: float
     sharpe_ratio: float
     max_drawdown: float
+    benchmark_pnl: float = 0.0
+    alpha: float = 0.0
     created_at: datetime
 
 
@@ -140,6 +147,7 @@ class InitTokensRequest(BaseModel):
 class DistributeRevenueRequest(BaseModel):
     bot_id: str
     total_revenue: float
+    quarter: str = ""  # e.g. "2026-Q2"; auto-derived if empty
 
 
 class HolderPayoutResponse(BaseModel):
@@ -152,6 +160,8 @@ class HolderPayoutResponse(BaseModel):
 class RevenueDistributionResponse(BaseModel):
     bot_id: str
     total_revenue: float
+    platform_fee: float
+    distributable: float
     public_share: float
     tech_share: float
     gov_share: float
@@ -186,6 +196,7 @@ class PollResultResponse(BaseModel):
     total_weight: float
     stage_at_close: int
     closed_at: datetime
+    vote_count: int = 0
 
 
 class StageResponse(BaseModel):
@@ -200,3 +211,148 @@ class StageTransitionResponse(BaseModel):
     to_stage: int
     triggered_by: str
     timestamp: datetime
+
+
+class SubmitAuditRequest(BaseModel):
+    quarter: str
+    finding: str
+    recommendation: str
+    severity: Literal["low", "medium", "high"] = "medium"
+
+
+class AuditResponse(BaseModel):
+    id: int
+    bot_id: str
+    quarter: str
+    submitted_by: str
+    finding: str
+    recommendation: str
+    severity: str
+    created_at: datetime
+
+
+# ── Leaderboard ───────────────────────────────────────────────────────────────
+
+class LeaderboardEntryResponse(BaseModel):
+    rank: int
+    strategy_key: str
+    total_runs: int
+    avg_sharpe: float
+    avg_pnl: float
+    best_pnl: float
+    avg_win_rate: float
+    avg_alpha: float = 0.0
+
+
+# ── Portfolio (token purchases) ───────────────────────────────────────────────
+
+class PurchaseTokensRequest(BaseModel):
+    bot_id: str
+    amount: float  # number of RST tokens to buy
+
+
+class HoldingResponse(BaseModel):
+    bot_id: str
+    bot_name: str
+    amount: float  # RST tokens held
+    cost_basis: float  # amount * RST_PRICE at purchase time
+
+
+class MyHoldingsResponse(BaseModel):
+    holdings: list[HoldingResponse]
+    total_tokens: float
+    total_value: float
+
+
+class SellTokensRequest(BaseModel):
+    bot_id: str
+    amount: float  # number of RST tokens to sell
+
+
+class EarningPayoutResponse(BaseModel):
+    bot_id: str
+    bot_name: str
+    amount: float
+    rst_balance: float
+    quarter: str
+    distributed_at: datetime
+
+
+class MyEarningsResponse(BaseModel):
+    earnings: list[EarningPayoutResponse]
+    total_earned: float
+
+
+class PlatformRevenueResponse(BaseModel):
+    total_fees_collected: float
+    event_count: int
+
+
+# ── Tech Company Dashboard ────────────────────────────────────────────────────
+
+class TechBotSummary(BaseModel):
+    id: str
+    name: str
+    strategy_key: str
+    status: str
+    description: str | None
+    created_at: datetime
+    total_revenue_distributed: float
+    your_earnings: float
+    distribution_count: int
+    token_holder_count: int
+    tokens_in_circulation: float
+
+
+class TechDashboardSummary(BaseModel):
+    total_bots: int
+    approved_bots: int
+    total_your_earnings: float
+    total_distributions: int
+    total_token_holders: int
+
+
+class TechDashboardResponse(BaseModel):
+    bots: list[TechBotSummary]
+    summary: TechDashboardSummary
+
+
+# ── Bot Profile (due diligence) ───────────────────────────────────────────────
+
+class BotTokenDistribution(BaseModel):
+    public_pool_remaining: float     # tokens still available to buy
+    investor_holdings: float         # tokens held by real investors
+    tech_holdings: float             # tech company allocation
+    gov_holdings: float              # governance allocation
+    total: float
+    investor_count: int              # unique real investors
+
+
+class BotBacktestSummary(BaseModel):
+    id: str
+    symbol: str
+    timeframe: str
+    data_source: str
+    final_pnl: float
+    sharpe_ratio: float
+    win_rate: float
+    max_drawdown: float
+    num_candles: int
+    created_at: datetime
+
+
+class BotProfileResponse(BaseModel):
+    id: str
+    name: str
+    strategy_key: str
+    status: str
+    description: str | None
+    created_at: datetime
+    tech_company_name: str | None    # company_name of the submitting user
+    risk_rating: str                 # "Low" | "Medium" | "High" | "Unrated"
+    avg_sharpe: float | None
+    avg_pnl: float | None
+    best_pnl: float | None
+    run_count: int
+    token_distribution: BotTokenDistribution | None
+    recent_runs: list[BotBacktestSummary]

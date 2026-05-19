@@ -28,3 +28,14 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     from backend.db import models  # noqa: F401 — ensures models are registered
     Base.metadata.create_all(bind=engine)
+    # Add benchmark_pnl column to existing backtest_runs table if missing
+    with engine.connect() as conn:
+        try:
+            conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE backtest_runs ADD COLUMN benchmark_pnl REAL NOT NULL DEFAULT 0.0"
+                )
+            )
+            conn.commit()
+        except Exception:
+            pass  # column already exists

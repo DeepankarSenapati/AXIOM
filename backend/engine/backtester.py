@@ -50,20 +50,21 @@ class Backtester:
         self.runner = runner
 
     def run(self, candles: list[Candle]) -> BacktestResult:
-        records = self.runner.run(candles)
+        all_records = self.runner.run(candles)
+        trade_records = [r for r in all_records if r.action_type in ("BUY", "SELL")]
 
         start_cash = self.runner.starting_cash
-        end_cash = records[-1].cash_after if records else start_cash
-        final_pnl = records[-1].pnl if records else 0.0
-        total_trades = sum(1 for r in records if r.action_type in ("BUY", "SELL"))
+        end_cash = all_records[-1].cash_after if all_records else start_cash
+        final_pnl = all_records[-1].pnl if all_records else 0.0
+        total_trades = len(trade_records)
 
         return BacktestResult(
             bot_id=self.runner.bot_id,
             total_trades=total_trades,
             final_pnl=final_pnl,
-            trade_records=records,
+            trade_records=trade_records,
             start_cash=start_cash,
             end_cash=end_cash,
-            sharpe_ratio=_sharpe_ratio(records, start_cash),
-            max_drawdown=_max_drawdown(records, start_cash),
+            sharpe_ratio=_sharpe_ratio(all_records, start_cash),
+            max_drawdown=_max_drawdown(all_records, start_cash),
         )

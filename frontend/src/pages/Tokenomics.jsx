@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { apiFetch } from "../auth.js";
 
 const PIE_DATA = [
   { name: "Public (70%)", value: 70, color: "#6366f1" },
@@ -28,6 +29,8 @@ function DistributionResult({ result }) {
     { label: "Tech Company", amount: result.tech_share,   color: "text-emerald-400", bg: "bg-emerald-900/30 border-emerald-800" },
     { label: "Governance",   amount: result.gov_share,    color: "text-amber-400",   bg: "bg-amber-900/30 border-amber-800" },
   ];
+  const platformFee = result.platform_fee ?? 0;
+  const distributable = result.distributable ?? result.total_revenue;
 
   const CustomTooltip = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
@@ -43,6 +46,12 @@ function DistributionResult({ result }) {
     <div className="border-t border-gray-800 pt-3 space-y-4">
       <h4 className="text-xs font-medium text-gray-400">Distribution Result</h4>
 
+      {/* Platform fee line */}
+      <div className="flex items-center justify-between rounded-lg bg-gray-900 border border-gray-700 px-3 py-2">
+        <span className="text-xs text-gray-400">Platform fee (2% retained by AXIOM)</span>
+        <span className="text-xs font-mono font-semibold text-rose-400">−${platformFee.toFixed(2)}</span>
+      </div>
+
       {/* 3 share cards */}
       <div className="grid grid-cols-3 gap-3">
         {shares.map(({ label, amount, color, bg }) => (
@@ -50,7 +59,7 @@ function DistributionResult({ result }) {
             <p className="text-xs text-gray-400 mb-1">{label}</p>
             <p className={`text-xl font-bold font-mono ${color}`}>${amount?.toFixed(2)}</p>
             <p className="text-xs text-gray-600 mt-0.5">
-              {((amount / result.total_revenue) * 100).toFixed(0)}% of revenue
+              {((amount / distributable) * 100).toFixed(0)}% of distributable
             </p>
           </div>
         ))}
@@ -95,7 +104,7 @@ function BotTokenomics({ bot }) {
 
   function fetchBalances() {
     setLoading(true);
-    fetch(`/tokenomics/${bot.id}/balances`)
+    apiFetch(`/tokenomics/${bot.id}/balances`)
       .then((r) => { if (r.status === 404) return null; if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(setBalances)
       .catch((e) => setError(e.message))
@@ -106,7 +115,7 @@ function BotTokenomics({ bot }) {
 
   function handleInit() {
     setInitializing(true);
-    fetch("/tokenomics/init", {
+    apiFetch("/tokenomics/init", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bot_id: bot.id }),
@@ -120,7 +129,7 @@ function BotTokenomics({ bot }) {
   function handleDistribute() {
     setDistributing(true);
     setDistResult(null);
-    fetch("/tokenomics/distribute", {
+    apiFetch("/tokenomics/distribute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bot_id: bot.id, total_revenue: Number(revenue) }),
@@ -202,7 +211,7 @@ export default function Tokenomics() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/bots/")
+    apiFetch("/bots/")
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(setBots)
       .catch((e) => setError(e.message))

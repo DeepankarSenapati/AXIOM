@@ -42,6 +42,21 @@ export function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * Drop-in replacement for fetch() that:
+ * - Automatically attaches the Bearer token
+ * - Calls logout() and redirects to /login on any 401 response
+ */
+export async function apiFetch(url, options = {}) {
+  const headers = { ...authHeaders(), ...(options.headers ?? {}) };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    logout();
+    throw new Error("Session expired — please log in again");
+  }
+  return res;
+}
+
 /** Map role → home route */
 export function roleHome(role) {
   const map = {

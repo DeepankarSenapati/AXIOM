@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authHeaders } from "../auth.js";
+import { apiFetch } from "../auth.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,11 +40,12 @@ function RoleBadge({ role }) {
   );
 }
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, sub }) {
   return (
     <div className="card flex flex-col gap-1">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
       <p className="text-3xl font-bold text-gray-100">{value ?? "—"}</p>
+      {sub && <p className="text-xs text-gray-600">{sub}</p>}
     </div>
   );
 }
@@ -53,17 +54,28 @@ function StatCard({ label, value }) {
 // Section A — Platform Overview
 // ---------------------------------------------------------------------------
 
-function PlatformOverview({ bots, users, stats, loading }) {
+function PlatformOverview({ bots, users, stats, platformRevenue, loading }) {
   const pendingCount = bots.filter(b => b.status === "pending_approval").length;
+  const feeDisplay = platformRevenue
+    ? `$${Number(platformRevenue.total_fees_collected).toFixed(2)}`
+    : "—";
+  const feeSub = platformRevenue
+    ? `from ${platformRevenue.event_count} distribution${platformRevenue.event_count !== 1 ? "s" : ""}`
+    : null;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
       <StatCard label="Total Bots" value={loading ? "—" : bots.length} />
       <StatCard label="Pending Approvals" value={loading ? "—" : pendingCount} />
       <StatCard label="Total Users" value={loading ? "—" : users.length} />
       <StatCard
         label="Backtest Runs"
         value={loading ? "—" : (stats?.total_backtest_runs ?? "—")}
+      />
+      <StatCard
+        label="Platform Revenue"
+        value={loading ? "—" : feeDisplay}
+        sub={loading ? null : feeSub}
       />
     </div>
   );
@@ -82,9 +94,9 @@ function PendingApprovals({ bots, onRefresh }) {
     setActioning(botId);
     setActionError(null);
     try {
-      const res = await fetch(`/admin/bots/${botId}/${action}`, {
+      const res = await apiFetch(`/admin/bots/${botId}/${action}`, {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -266,18 +278,17 @@ export default function AdminDashboard() {
   const [bots, setBots] = useState([]);
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
+  const [platformRevenue, setPlatformRevenue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [botsError, setBotsError] = useState(null);
   const [usersError, setUsersError] = useState(null);
-
-  const headers = authHeaders();
 
   async function fetchAll() {
     setLoading(true);
 
     // Bots
     try {
-      const res = await fetch("/admin/bots", { headers });
+      const res = await apiFetch("/admin/bots");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBots(await res.json());
       setBotsError(null);
@@ -287,7 +298,7 @@ export default function AdminDashboard() {
 
     // Users
     try {
-      const res = await fetch("/admin/users", { headers });
+      const res = await apiFetch("/admin/users");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setUsers(await res.json());
       setUsersError(null);
@@ -297,10 +308,18 @@ export default function AdminDashboard() {
 
     // Stats
     try {
-      const res = await fetch("/admin/stats", { headers });
+      const res = await apiFetch("/admin/stats");
       if (res.ok) setStats(await res.json());
     } catch {
       // stats are optional
+    }
+
+    // Platform revenue
+    try {
+      const res = await apiFetch("/admin/platform-revenue");
+      if (res.ok) setPlatformRevenue(await res.json());
+    } catch {
+      // optional
     }
 
     setLoading(false);
@@ -321,7 +340,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* A — Platform Overview */}
-      <PlatformOverview bots={bots} users={users} stats={stats} loading={loading} />
+      <PlatformOverview bots={bots} users={users} stats={stats} platformRevenue={platformRevenue} loading={loading} />
 
       {/* B — Pending Approvals */}
       <PendingApprovals bots={bots} onRefresh={fetchAll} />

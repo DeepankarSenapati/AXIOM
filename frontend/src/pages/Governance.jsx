@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "../auth.js";
 
 const STAGE_NAMES = { 1: "Normal", 2: "Review", 3: "Community" };
 const STAGE_COLORS = { 1: "badge-green", 2: "badge-yellow", 3: "badge-red" };
@@ -72,37 +73,68 @@ function PollHistoryTable({ polls }) {
   );
 }
 
-function BotGovernance({ bot }) {
+const SEVERITY_COLORS = { low: "badge-green", medium: "badge-yellow", high: "badge-red" };
+const CURRENT_QUARTER = "2026-Q2";
+
+function BotGovernance({ bot, currentUser }) {
   const [stage, setStage] = useState(null);
   const [polls, setPolls] = useState([]);
+  const [audits, setAudits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [voteForm, setVoteForm] = useState({ quarter: "2026-Q1", voter_address: "", vote: true, token_weight: 1000 });
+  const [voteForm, setVoteForm] = useState({ quarter: CURRENT_QUARTER, voter_address: "", vote: "satisfied", token_weight: 1000 });
   const [voting, setVoting] = useState(false);
   const [voteMsg, setVoteMsg] = useState(null);
 
-  const [closeQuarter, setCloseQuarter] = useState("2026-Q1");
+  const [closeQuarter, setCloseQuarter] = useState(CURRENT_QUARTER);
   const [closing, setClosing] = useState(false);
   const [closeResult, setCloseResult] = useState(null);
+
+  const [auditForm, setAuditForm] = useState({ quarter: CURRENT_QUARTER, finding: "", recommendation: "", severity: "medium" });
+  const [submittingAudit, setSubmittingAudit] = useState(false);
+  const [auditMsg, setAuditMsg] = useState(null);
 
   function fetchAll() {
     setLoading(true);
     Promise.all([
-      fetch(`/governance/${bot.id}/stage`).then((r) => r.json()),
-      fetch(`/governance/${bot.id}/polls`).then((r) => r.json()),
+      apiFetch(`/governance/${bot.id}/stage`).then((r) => r.json()),
+      apiFetch(`/governance/${bot.id}/polls`).then((r) => r.json()),
+      apiFetch(`/governance/${bot.id}/audits`).then((r) => r.ok ? r.json() : []),
     ])
-      .then(([s, p]) => { setStage(s); setPolls(Array.isArray(p) ? p : []); setError(null); })
+      .then(([s, p, a]) => {
+        setStage(s);
+        setPolls(Array.isArray(p) ? p : []);
+        setAudits(Array.isArray(a) ? a : []);
+        setError(null);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => { fetchAll(); }, [bot.id]);
 
+  useEffect(() => {
+    if (currentUser?.email) {
+      setVoteForm((f) => ({ ...f, voter_address: currentUser.email }));
+    }
+  }, [currentUser?.email]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    apiFetch("/tokenomics/my-holdings")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        const holding = data?.holdings?.find((h) => h.bot_id === bot.id);
+        if (holding?.amount) setVoteForm((f) => ({ ...f, token_weight: Math.round(holding.amount) }));
+      })
+      .catch(() => {});
+  }, [bot.id, currentUser]);
+
   function handleVote(e) {
     e.preventDefault();
     setVoting(true); setVoteMsg(null);
-    fetch("/governance/vote", {
+    apiFetch("/governance/vote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bot_id: bot.id, quarter: voteForm.quarter, voter_address: voteForm.voter_address, vote: voteForm.vote, token_weight: Number(voteForm.token_weight) }),
@@ -117,7 +149,7 @@ function BotGovernance({ bot }) {
 
   function handleClosePoll() {
     setClosing(true); setCloseResult(null);
-    fetch("/governance/poll/close", {
+    apiFetch("/governance/poll/close", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bot_id: bot.id, quarter: closeQuarter }),
@@ -127,6 +159,26 @@ function BotGovernance({ bot }) {
       .catch((e) => setCloseResult({ error: e.message }))
       .finally(() => setClosing(false));
   }
+
+  function handleAuditSubmit(e) {
+    e.preventDefault();
+    setSubmittingAudit(true); setAuditMsg(null);
+    apiFetch(`/governance/${bot.id}/audit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(auditForm),
+    })
+      .then((r) => r.ok ? r.json() : r.json().then((d) => { throw new Error(d.detail); }))
+      .then(() => {
+        setAuditMsg({ ok: true, text: "Audit report submitted." });
+        setAuditForm({ quarter: CURRENT_QUARTER, finding: "", recommendation: "", severity: "medium" });
+        fetchAll();
+      })
+      .catch((e) => setAuditMsg({ ok: false, text: e.message }))
+      .finally(() => setSubmittingAudit(false));
+  }
+
+  const isStage2Plus = stage && stage.current_stage >= 2;
 
   return (
     <div className="card space-y-4">
@@ -150,6 +202,18 @@ function BotGovernance({ bot }) {
         </div>
       )}
 
+      {/* Stage 2+ alert banner */}
+      {isStage2Plus && (
+        <div className="rounded-lg border border-amber-700 bg-amber-900/20 px-4 py-3 space-y-1">
+          <p className="text-sm font-semibold text-amber-400">
+            Stage {stage.current_stage} — Audit Required
+          </p>
+          <p className="text-xs text-amber-300/70">
+            This bot has failed satisfaction polls. Submit an audit report detailing findings and corrective recommendations.
+          </p>
+        </div>
+      )}
+
       {/* Submit vote */}
       <div className="border-t border-gray-800 pt-3 space-y-2">
         <h4 className="text-xs font-semibold text-gray-400">Submit Satisfaction Vote</h4>
@@ -160,7 +224,7 @@ function BotGovernance({ bot }) {
           </div>
           <div>
             <label className="label">Voter Address</label>
-            <input className="input" placeholder="0xabc…" value={voteForm.voter_address} onChange={(e) => setVoteForm({ ...voteForm, voter_address: e.target.value })} required />
+            <input className="input" placeholder="your@email.com" value={voteForm.voter_address} onChange={(e) => setVoteForm({ ...voteForm, voter_address: e.target.value })} required />
           </div>
           <div>
             <label className="label">Token Weight</label>
@@ -168,9 +232,9 @@ function BotGovernance({ bot }) {
           </div>
           <div>
             <label className="label">Vote</label>
-            <select className="input" value={voteForm.vote.toString()} onChange={(e) => setVoteForm({ ...voteForm, vote: e.target.value === "true" })}>
-              <option value="true">Satisfied</option>
-              <option value="false">Not Satisfied</option>
+            <select className="input" value={voteForm.vote} onChange={(e) => setVoteForm({ ...voteForm, vote: e.target.value })}>
+              <option value="satisfied">Satisfied</option>
+              <option value="unsatisfied">Not Satisfied</option>
             </select>
           </div>
           <div className="col-span-2 md:col-span-4">
@@ -186,7 +250,7 @@ function BotGovernance({ bot }) {
       <div className="border-t border-gray-800 pt-3 space-y-2">
         <h4 className="text-xs font-semibold text-gray-400">Close Poll</h4>
         <div className="flex gap-2">
-          <input className="input flex-1" value={closeQuarter} onChange={(e) => setCloseQuarter(e.target.value)} placeholder="e.g. 2026-Q1" />
+          <input className="input flex-1" value={closeQuarter} onChange={(e) => setCloseQuarter(e.target.value)} placeholder="e.g. 2026-Q2" />
           <button onClick={handleClosePoll} disabled={closing} className="btn bg-amber-700 hover:bg-amber-600 text-white text-sm">
             {closing ? "Closing…" : "Close Poll"}
           </button>
@@ -206,6 +270,64 @@ function BotGovernance({ bot }) {
         {closeResult?.error && <p className="text-xs text-red-400">{closeResult.error}</p>}
       </div>
 
+      {/* Audit form — Stage 2+ only */}
+      {isStage2Plus && (
+        <div className="border-t border-amber-800/50 pt-3 space-y-2">
+          <h4 className="text-xs font-semibold text-amber-400">Submit Audit Report</h4>
+          <form onSubmit={handleAuditSubmit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label">Quarter</label>
+                <input className="input" value={auditForm.quarter} onChange={(e) => setAuditForm({ ...auditForm, quarter: e.target.value })} required />
+              </div>
+              <div>
+                <label className="label">Severity</label>
+                <select className="input" value={auditForm.severity} onChange={(e) => setAuditForm({ ...auditForm, severity: e.target.value })}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="label">Findings</label>
+              <textarea className="input min-h-[64px] resize-y" placeholder="What issues were identified?" value={auditForm.finding} onChange={(e) => setAuditForm({ ...auditForm, finding: e.target.value })} required />
+            </div>
+            <div>
+              <label className="label">Recommendations</label>
+              <textarea className="input min-h-[56px] resize-y" placeholder="What corrective actions are recommended?" value={auditForm.recommendation} onChange={(e) => setAuditForm({ ...auditForm, recommendation: e.target.value })} required />
+            </div>
+            <button type="submit" className="btn bg-amber-700 hover:bg-amber-600 text-white text-sm" disabled={submittingAudit}>
+              {submittingAudit ? "Submitting…" : "Submit Audit Report"}
+            </button>
+          </form>
+          {auditMsg && <p className={`text-xs ${auditMsg.ok ? "text-green-400" : "text-red-400"}`}>{auditMsg.text}</p>}
+        </div>
+      )}
+
+      {/* Audit history */}
+      {audits.length > 0 && (
+        <div className="border-t border-gray-800 pt-3 space-y-2">
+          <h4 className="text-xs font-semibold text-gray-400">
+            Audit Reports <span className="ml-1 text-gray-600">({audits.length})</span>
+          </h4>
+          <div className="space-y-2">
+            {audits.map((a) => (
+              <div key={a.id} className="bg-gray-800/60 rounded-lg px-3 py-2 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`badge ${SEVERITY_COLORS[a.severity] ?? "badge-yellow"}`}>{a.severity}</span>
+                  <span className="text-xs font-mono text-gray-400">{a.quarter}</span>
+                  <span className="text-xs text-gray-600">by {a.submitted_by}</span>
+                  <span className="text-xs text-gray-600 ml-auto">{new Date(a.created_at).toLocaleDateString()}</span>
+                </div>
+                <p className="text-xs text-gray-300"><span className="text-gray-500">Finding: </span>{a.finding}</p>
+                <p className="text-xs text-gray-400"><span className="text-gray-500">Recommendation: </span>{a.recommendation}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Poll history */}
       <div className="border-t border-gray-800 pt-3 space-y-2">
         <h4 className="text-xs font-semibold text-gray-400">
@@ -220,13 +342,16 @@ function BotGovernance({ bot }) {
 
 export default function Governance() {
   const [bots, setBots] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/bots/")
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setBots)
+    Promise.all([
+      apiFetch("/bots/").then((r) => r.ok ? r.json() : []),
+      apiFetch("/auth/me").then((r) => r.ok ? r.json() : null),
+    ])
+      .then(([b, u]) => { setBots(b); setCurrentUser(u); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -244,7 +369,7 @@ export default function Governance() {
       {error && <p className="text-sm text-red-400">Error: {error}</p>}
       {!loading && !error && bots.length === 0 && <p className="text-sm text-gray-500">No bots found.</p>}
       <div className="grid gap-4 md:grid-cols-2">
-        {bots.map((bot) => <BotGovernance key={bot.id} bot={bot} />)}
+        {bots.map((bot) => <BotGovernance key={bot.id} bot={bot} currentUser={currentUser} />)}
       </div>
     </div>
   );

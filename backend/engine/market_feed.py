@@ -33,7 +33,10 @@ class MockMarketFeed:
         n: int,
         start_price: float,
         start_time: datetime | None = None,
+        seed: int | None = None,
     ) -> list[Candle]:
+        if seed is not None:
+            random.seed(seed)
         if start_time is None:
             start_time = datetime(2026, 1, 1, 0, 0, 0)
 

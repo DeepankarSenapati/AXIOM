@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Governance from "./pages/Governance.jsx";
 import GovernanceDashboard from "./pages/GovernanceDashboard.jsx";
 import History from "./pages/History.jsx";
+import Leaderboard from "./pages/Leaderboard.jsx";
 import Login from "./pages/Login.jsx";
 import MarketDashboard from "./pages/MarketDashboard.jsx";
 import TechDashboard from "./pages/TechDashboard.jsx";
@@ -19,6 +20,7 @@ const NAV_ADMIN = [
   { to: "/admin", label: "Admin", icon: "🔐" },
   { to: "/dashboard", label: "Dashboard", icon: "⬛" },
   { to: "/arena", label: "Bot Arena", icon: "⚔️" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
   { to: "/history", label: "History", icon: "🕐" },
   { to: "/tokenomics", label: "Tokenomics", icon: "🪙" },
   { to: "/governance", label: "Governance", icon: "🗳️" },
@@ -27,17 +29,21 @@ const NAV_ADMIN = [
 const NAV_TECH = [
   { to: "/tech", label: "My Bots", icon: "🤖" },
   { to: "/arena", label: "Bot Arena", icon: "⚔️" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
   { to: "/history", label: "History", icon: "🕐" },
 ];
 
 const NAV_GOV = [
   { to: "/governance-co", label: "Gov Dashboard", icon: "🏛️" },
   { to: "/governance", label: "Governance Voting", icon: "🗳️" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
   { to: "/history", label: "History", icon: "🕐" },
 ];
 
 const NAV_MARKET = [
   { to: "/market", label: "Market", icon: "📈" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
+  { to: "/governance", label: "Governance", icon: "🗳️" },
   { to: "/history", label: "History", icon: "🕐" },
 ];
 
@@ -162,6 +168,7 @@ function AppLayout() {
           {/* Shared routes (all authenticated roles) */}
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/arena" element={<BotArena />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/history" element={<History />} />
           <Route path="/tokenomics" element={<Tokenomics />} />
           <Route path="/governance" element={<Governance />} />

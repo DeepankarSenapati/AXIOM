@@ -38,6 +38,8 @@ class BotRunner:
         symbol = action.symbol or candle.symbol
         price = candle.close
 
+        executed_qty = action.quantity
+
         if action.action_type == "BUY":
             cost = price * action.quantity
             if cost > cash:
@@ -50,9 +52,9 @@ class BotRunner:
 
         elif action.action_type == "SELL":
             held = positions.get(symbol, 0.0)
-            sell_qty = min(action.quantity, held)
-            cash += price * sell_qty
-            positions[symbol] = held - sell_qty
+            executed_qty = min(action.quantity, held)
+            cash += price * executed_qty
+            positions[symbol] = held - executed_qty
 
         # Compute unrealised PnL: sum of (current_price * qty) for all positions minus starting cash offset
         position_value = sum(positions.get(s, 0.0) * price for s in positions)
@@ -63,7 +65,7 @@ class BotRunner:
             bot_id=self.bot_id,
             symbol=symbol,
             action_type=action.action_type,
-            quantity=action.quantity,
+            quantity=executed_qty,
             price=price,
             timestamp=candle.timestamp,
             reason=action.reason,
