@@ -220,12 +220,13 @@ export default function Tokenomics() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-100">Tokenomics</h1>
-        <p className="text-sm text-gray-400 mt-1">
+      <div className="page-heading"><div>
+        <p className="page-kicker">Revenue & allocation</p>
+        <h1>Tokenomics</h1>
+        <p className="page-subtitle">
           Each bot has 1,000,000 RST — 70% public / 15% tech / 15% governance.
         </p>
-      </div>
+      </div></div>
       {loading && <p className="text-sm text-gray-500">Loading bots…</p>}
       {error && <p className="text-sm text-red-400">Error: {error}</p>}
       {!loading && !error && bots.length === 0 && <p className="text-sm text-gray-500">No bots found.</p>}

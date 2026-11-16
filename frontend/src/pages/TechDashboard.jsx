@@ -82,7 +82,7 @@ function SummaryCards({ summary, loading }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {cards.map(({ label, value, sub, accent }) => (
-        <div key={label} className="card flex flex-col gap-1">
+        <div key={label} className="card stat-card flex flex-col gap-1">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
           <p className={`text-3xl font-bold font-mono ${accent}`}>{value}</p>
           <p className="text-xs text-gray-600">{sub}</p>
@@ -352,10 +352,11 @@ export default function TechDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-heading">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Tech Dashboard</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="page-kicker">Builder workspace</p>
+          <h1>Tech Dashboard</h1>
+          <p className="page-subtitle">
             Your bots earn you 15% of every revenue distribution — automatically.
           </p>
         </div>

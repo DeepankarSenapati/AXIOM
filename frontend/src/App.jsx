@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { authHeaders, getUser, isAuthenticated, logout } from "./auth.js";
+import { getUser, isAuthenticated, logout } from "./auth.js";
+import { BrandMark, NavIcon } from "./components/Brand.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import BotArena from "./pages/BotArena.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -17,34 +18,34 @@ import Tokenomics from "./pages/Tokenomics.jsx";
 // ---------------------------------------------------------------------------
 
 const NAV_ADMIN = [
-  { to: "/admin", label: "Admin", icon: "🔐" },
-  { to: "/dashboard", label: "Dashboard", icon: "⬛" },
-  { to: "/arena", label: "Bot Arena", icon: "⚔️" },
-  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
-  { to: "/history", label: "History", icon: "🕐" },
-  { to: "/tokenomics", label: "Tokenomics", icon: "🪙" },
-  { to: "/governance", label: "Governance", icon: "🗳️" },
+  { to: "/admin", label: "Admin", icon: "admin" },
+  { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { to: "/arena", label: "Bot Arena", icon: "arena" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+  { to: "/history", label: "History", icon: "history" },
+  { to: "/tokenomics", label: "Tokenomics", icon: "tokenomics" },
+  { to: "/governance", label: "Governance", icon: "governance" },
 ];
 
 const NAV_TECH = [
-  { to: "/tech", label: "My Bots", icon: "🤖" },
-  { to: "/arena", label: "Bot Arena", icon: "⚔️" },
-  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
-  { to: "/history", label: "History", icon: "🕐" },
+  { to: "/tech", label: "My Bots", icon: "tech" },
+  { to: "/arena", label: "Bot Arena", icon: "arena" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+  { to: "/history", label: "History", icon: "history" },
 ];
 
 const NAV_GOV = [
-  { to: "/governance-co", label: "Gov Dashboard", icon: "🏛️" },
-  { to: "/governance", label: "Governance Voting", icon: "🗳️" },
-  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
-  { to: "/history", label: "History", icon: "🕐" },
+  { to: "/governance-co", label: "Gov Dashboard", icon: "governance" },
+  { to: "/governance", label: "Governance Voting", icon: "governance" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+  { to: "/history", label: "History", icon: "history" },
 ];
 
 const NAV_MARKET = [
-  { to: "/market", label: "Market", icon: "📈" },
-  { to: "/leaderboard", label: "Leaderboard", icon: "🏆" },
-  { to: "/governance", label: "Governance", icon: "🗳️" },
-  { to: "/history", label: "History", icon: "🕐" },
+  { to: "/market", label: "Market", icon: "market" },
+  { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+  { to: "/governance", label: "Governance", icon: "governance" },
+  { to: "/history", label: "History", icon: "history" },
 ];
 
 function getNavForRole(role) {
@@ -111,56 +112,58 @@ function AppLayout() {
   const user = getUser();
   const roleLabel = ROLE_LABELS[user?.role] ?? user?.role ?? "Unknown";
   const nav = getNavForRole(user?.role);
+  const location = useLocation();
+  const currentPage = nav.find((item) => item.to === location.pathname)?.label ?? "Workspace";
+  const initials = (user?.email?.[0] ?? "A").toUpperCase();
 
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col">
-        <div className="px-4 py-5 border-b border-gray-800">
-          <span className="text-lg font-bold text-indigo-400 tracking-widest">AXIOM</span>
-          <p className="text-xs text-gray-500 mt-0.5">Bot Trading Platform</p>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <BrandMark className="brand-mark" />
+          <div>
+            <span className="brand-name">AXIOM<span className="brand-period">.</span></span>
+            <span className="brand-caption">INTELLIGENT MARKETS</span>
+          </div>
         </div>
-        <nav className="flex-1 py-4 space-y-1 px-2">
+        <div className="sidebar-section-label">WORKSPACE <span>01</span></div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
           {nav.map(({ to, label, icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
-                `flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-indigo-700 text-white"
-                    : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                }`
+                `sidebar-link${isActive ? " is-active" : ""}`
               }
             >
-              <span>{icon}</span>
-              {label}
+              <NavIcon name={icon} />
+              <span>{label}</span>
+              <span className="nav-arrow" aria-hidden="true">↗</span>
             </NavLink>
           ))}
         </nav>
-
-        {/* User info + logout */}
-        <div className="px-4 py-3 border-t border-gray-800 space-y-2">
-          {user && (
-            <div className="space-y-0.5">
-              <p className="text-xs text-gray-100 truncate">{user.email}</p>
-              <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-indigo-900 text-indigo-300 font-medium">
-                {roleLabel}
-              </span>
-            </div>
-          )}
-          <button
-            onClick={logout}
-            className="w-full text-left text-xs text-gray-500 hover:text-red-400 transition-colors py-1"
-          >
-            Sign out →
-          </button>
-          <p className="text-xs text-gray-700">Phase 1 — Local MVP</p>
+        <div className="sidebar-footer">
+          <div className="environment-card">
+            <div className="environment-card-top"><span className="status-dot" /> SIMULATION MODE</div>
+            <p>Practice, explore, and evaluate without real orders.</p>
+            <span className="environment-card-foot">LOCAL ENVIRONMENT <span>↗</span></span>
+          </div>
+          <div className="sidebar-version"><span>AXIOM / PLATFORM</span><span>V 01</span></div>
         </div>
       </aside>
-
-      {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <div className="workspace">
+        <header className="workspace-header">
+          <div className="breadcrumbs"><span>WORKSPACE</span><span className="breadcrumb-slash">/</span><strong>{currentPage}</strong></div>
+          <div className="header-actions">
+            <span className="simulation-pill"><span className="status-dot" /> SIMULATION</span>
+            <div className="header-user" title={user?.email}>
+              <span className="user-avatar">{initials}</span>
+              <span className="user-details"><strong>{roleLabel}</strong><small>{user?.email}</small></span>
+            </div>
+            <button type="button" onClick={logout} className="sign-out">Sign out <span aria-hidden="true">↗</span></button>
+          </div>
+        </header>
+        <main className="page-content">
         <Routes>
           {/* Role-based home redirect */}
           <Route path="/" element={<RoleHome />} />
@@ -207,7 +210,8 @@ function AppLayout() {
             }
           />
         </Routes>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

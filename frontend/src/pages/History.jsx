@@ -165,7 +165,11 @@ export default function History() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-100">Backtest History</h1>
+      <div className="page-heading"><div>
+        <p className="page-kicker">Research archive</p>
+        <h1>Backtest History</h1>
+        <p className="page-subtitle">Review and explore your previous simulation runs.</p>
+      </div></div>
 
       {/* Filter bar */}
       <div className="card space-y-3">

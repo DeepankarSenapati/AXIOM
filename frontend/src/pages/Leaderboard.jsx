@@ -49,10 +49,11 @@ export default function Leaderboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-heading">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Strategy Leaderboard</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="page-kicker">Performance intelligence</p>
+          <h1>Strategy Leaderboard</h1>
+          <p className="page-subtitle">
             Ranked by average Sharpe ratio across all backtest runs.
           </p>
         </div>

@@ -42,7 +42,7 @@ function RoleBadge({ role }) {
 
 function StatCard({ label, value, sub }) {
   return (
-    <div className="card flex flex-col gap-1">
+    <div className="card stat-card flex flex-col gap-1">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
       <p className="text-3xl font-bold text-gray-100">{value ?? "—"}</p>
       {sub && <p className="text-xs text-gray-600">{sub}</p>}
@@ -329,8 +329,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-100">Admin Dashboard</h1>
+      <div className="page-heading">
+        <div>
+          <p className="page-kicker">Platform overview</p>
+          <h1>Admin Dashboard</h1>
+          <p className="page-subtitle">Your command center for the AXIOM ecosystem.</p>
+        </div>
         <button
           onClick={fetchAll}
           className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm"

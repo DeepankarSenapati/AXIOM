@@ -603,7 +603,11 @@ function BotArenaPage() {
 
   return (
     <div className="p-6 space-y-8">
-      <h1 className="text-2xl font-bold text-gray-100">Bot Arena</h1>
+      <div className="page-heading"><div>
+        <p className="page-kicker">Research & simulation</p>
+        <h1>Bot Arena</h1>
+        <p className="page-subtitle">Put strategies to the test and compare their performance.</p>
+      </div></div>
 
       {/* ── Single Bot Backtest ── */}
       <div className="card space-y-4">

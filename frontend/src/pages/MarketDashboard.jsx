@@ -763,8 +763,12 @@ export default function MarketDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-100">Market</h1>
+      <div className="page-heading">
+        <div>
+          <p className="page-kicker">Investor workspace</p>
+          <h1>Market</h1>
+          <p className="page-subtitle">Explore strategies and manage your simulated portfolio.</p>
+        </div>
         <button
           onClick={fetchBots}
           className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm"

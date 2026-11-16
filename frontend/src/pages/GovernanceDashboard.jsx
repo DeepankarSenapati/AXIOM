@@ -207,8 +207,12 @@ export default function GovernanceDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-100">Governance Dashboard</h1>
+      <div className="page-heading">
+        <div>
+          <p className="page-kicker">Oversight workspace</p>
+          <h1>Governance Dashboard</h1>
+          <p className="page-subtitle">Monitor bots and community sentiment.</p>
+        </div>
         <button
           onClick={fetchBots}
           className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm"
