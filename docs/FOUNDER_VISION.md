@@ -99,7 +99,10 @@ What if the reviewer could interrogate the strategy, not just admire its
 curve?”
 
 **Demonstration:** run the default RSI scenario, jump to the simulated shock,
-and show the signal and the guard blocking a buy. Then set **Number of worlds**
+and show the signal and the guard blocking a buy. Ask why a 3% buy-pause
+guard still reaches 5.43% maximum close drawdown in this run: the guard checks
+after the gap and leaves existing positions open, so it is a trigger, not a
+loss limit. Then set **Number of worlds**
 to 12 and generate the seeded Worlds: with the default experiment settings,
 the guard ends higher in 3, lower in 8,
 and approximately equal in 1. These are *this generator's samples*, not

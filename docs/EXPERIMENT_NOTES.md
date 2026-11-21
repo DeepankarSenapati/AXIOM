@@ -35,6 +35,18 @@ seed 45, the guard blocked later buys and the simulated return changed from
 before the shock in all 12 sampled worlds; that is not evidence it is generally
 resilient. Changing conditions or the generator can change these results.
 
+### An optional example for discussion
+
+After exploring individual seeds, we selected Momentum with seed 10 and the
+same settings as above, using the 3% guard. The guard triggers at candle 86,
+before the gap, but does not sell the existing position: prior-close exposure
+is about 29.48%. The strategy's stop-loss signals at candle 91 and fills at
+the next open. The guard later blocks a buy at candle 118 that the unguarded
+path fills at candle 119. Guarded final equity is $9,531.35 versus $9,869.86
+unguarded, a $338.51 whole-run difference; maximum close drawdown is 7.89%
+versus 8.12%. The difference cannot be attributed solely to that one buy.
+This is a selected artificial example, not an estimate of real-world risk.
+
 To reproduce, run the following from the project root with the virtual
 environment activated:
 

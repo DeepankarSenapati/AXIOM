@@ -34,8 +34,11 @@ Worlds to 12 when asked; it initially defaults to 6.
    strategies and synthetic prices; it does not accept a customer's strategy
    or trade real money.
 2. **0:30–1:20 — One decision.** Run the default experiment and point to the
-   scenario and guard results. In **One decision / two paths**, show the BUY
-   blocked at candle 91's close and the unguarded path's actual fill at candle
+   scenario and guard results. Ask: “Why did a 3% buy-pause guard still see
+   5.43% maximum close drawdown?” It checks at the close after the gap and
+   leaves the existing position open; it is a trigger, not a loss limit. In
+   **One decision / two paths**, show the BUY blocked at candle 91's close
+   and the unguarded path's actual fill at candle
    92's open. Click **Inspect the blocked signal** to open its recorder entry.
    The shock happens at the open, while the guard checks at the close; an
    earlier pending order could fill before that check. The guard pauses new
@@ -57,6 +60,15 @@ Worlds to 12 when asked; it initially defaults to 6.
 
 ### If there is time for questions
 
+- **A larger counterexample:** select Momentum and seed 10, keeping the
+  remaining default controls, then run again. The buy-pause guard triggers
+  at candle 86, before the gap, but leaves the existing position exposed.
+  The strategy signals a stop-loss at candle 91 and fills it at candle 92.
+  Later the guard blocks a new buy at candle 118. Final simulated equity is
+  $9,531.35 with the guard versus $9,869.86 without it; the guarded maximum
+  close drawdown is 7.89%. The $338.51 difference reflects the entire run,
+  not only that buy. This example was selected after exploring synthetic
+  seeds and is not representative evidence of real-world outcomes.
 - **Shock Landscape:** compare shock and fee combinations on one artificial
   seed. Show exposure immediately before the gap; a run with no position at
   that point is not proof of crash resilience.

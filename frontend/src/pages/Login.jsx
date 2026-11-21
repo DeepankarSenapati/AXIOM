@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { setToken } from "../auth.js";
 import { loginDestination } from "../loginDestination.js";
@@ -18,6 +18,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [demoNotice, setDemoNotice] = useState("");
+  const submitRef = useRef(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -81,7 +83,7 @@ export default function Login() {
                 placeholder="you@example.com"
                 autoComplete="username"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setDemoNotice(""); }}
                 required
                 autoFocus
               />
@@ -95,18 +97,19 @@ export default function Login() {
                 placeholder="••••••••"
                 autoComplete="current-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setDemoNotice(""); }}
                 required
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded px-3 py-2">
+              <p role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded px-3 py-2">
                 {error}
               </p>
             )}
 
-            <button type="submit" className="btn-primary login-submit" disabled={loading}>
+            <p className="text-sm text-gray-300" role="status">{demoNotice}</p>
+            <button ref={submitRef} type="submit" className="btn-primary login-submit" disabled={loading}>
               {loading ? "Signing in…" : "Enter workspace"} <span aria-hidden="true">↗</span>
             </button>
           </form>
@@ -114,10 +117,12 @@ export default function Login() {
             <summary>Explore demo credentials <span aria-hidden="true">+</span></summary>
             <div className="demo-credentials-list">
               <p>Choose an account to fill the form, then enter the workspace.</p>
-              {DEMO_ACCOUNTS.map((account) => <button key={account.email} type="button" onClick={() => {
+              {DEMO_ACCOUNTS.map((account) => <button key={account.email} type="button" disabled={loading} onClick={() => {
                 setEmail(account.email);
                 setPassword(account.password);
                 setError(null);
+                setDemoNotice(`${account.role} demo credentials filled. Select Enter workspace to sign in.`);
+                submitRef.current?.focus();
               }} aria-label={`Fill ${account.role} demo credentials`}>
                 <span><strong>{account.role}</strong><small>{account.email} / {account.password}</small></span>
                 <span aria-hidden="true">USE ↗</span>
