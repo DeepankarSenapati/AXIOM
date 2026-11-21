@@ -123,6 +123,7 @@ function BotProfileModal({ botId, onClose, onBuy }) {
                       <StatusBadge status={profile.status} />
                       <RiskBadge rating={profile.risk_rating} />
                     </div>
+                    <p className="text-xs text-gray-400">Risk label is a heuristic based on past simulated runs when available; it is not a prediction.</p>
                   </>
                 )
             }

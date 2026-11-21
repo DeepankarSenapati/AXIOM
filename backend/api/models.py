@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from backend.bots.registry import STRATEGY_MAP
 
@@ -111,6 +111,8 @@ class BacktestResultResponse(BaseModel):
     benchmark_pnl: float = 0.0
     alpha: float = 0.0
     trade_records: list[TradeRecordResponse]
+    # Complete per-candle records for equity charts; trade_records stays BUY/SELL-only.
+    equity_records: list[TradeRecordResponse] = Field(default_factory=list)
 
 
 class ArenaResultResponse(BaseModel):

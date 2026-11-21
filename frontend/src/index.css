@@ -61,6 +61,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .sign-out span { margin-left: 3px; color: #bfe98d; }
 .sign-out:hover { color: #fff; }
 .page-content { min-width: 0; }
+.page-loading { display: flex; align-items: center; gap: 10px; min-height: 160px; padding: 38px clamp(24px, 3vw, 48px); color: #afc3b2; font-size: 13px; }
+.page-loading span { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #c9f77d; }
 .page-content > div { width: 100%; max-width: 1660px; margin: 0 auto; padding: 38px clamp(24px, 3vw, 48px) 64px; }
 .page-content h1 { color: #f1f5ee; font-size: clamp(27px, 2.6vw, 36px); font-weight: 600; line-height: 1.15; letter-spacing: -.04em; }
 .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 6px; }

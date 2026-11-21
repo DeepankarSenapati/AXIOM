@@ -100,11 +100,13 @@ _SYSTEM_WALLETS = ("public_pool", "tech_wallet", "gov_wallet")
 
 
 def _compute_risk_rating(avg_sharpe: float | None, avg_drawdown: float | None, run_count: int) -> str:
-    if run_count == 0 or avg_sharpe is None:
+    """Return a historical heuristic, using drawdown magnitude rather than its sign."""
+    if run_count == 0 or avg_sharpe is None or avg_drawdown is None:
         return "Unrated"
-    if avg_sharpe >= 1.0 and (avg_drawdown or 1.0) <= 0.15:
+    drawdown_magnitude = abs(avg_drawdown)
+    if avg_sharpe >= 1.0 and drawdown_magnitude <= 0.15:
         return "Low"
-    if avg_sharpe >= 0.3 and (avg_drawdown or 1.0) <= 0.30:
+    if avg_sharpe >= 0.3 and drawdown_magnitude <= 0.30:
         return "Medium"
     return "High"
 

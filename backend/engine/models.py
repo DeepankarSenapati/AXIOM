@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Candle(BaseModel):
@@ -44,6 +44,8 @@ class BacktestResult(BaseModel):
     total_trades: int
     final_pnl: float
     trade_records: list[TradeRecord]
+    # One point per candle, including HOLDs, for time-aligned equity charts.
+    equity_records: list[TradeRecord] = Field(default_factory=list)
     start_cash: float
     end_cash: float
     sharpe_ratio: float

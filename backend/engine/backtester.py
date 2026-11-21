@@ -63,6 +63,7 @@ class Backtester:
             total_trades=total_trades,
             final_pnl=final_pnl,
             trade_records=trade_records,
+            equity_records=all_records,
             start_cash=start_cash,
             end_cash=end_cash,
             sharpe_ratio=_sharpe_ratio(all_records, start_cash),

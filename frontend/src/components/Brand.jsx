@@ -11,6 +11,7 @@ const paths = {
   admin: <><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></>,
   dashboard: <><path d="M4 19V9l8-5 8 5v10H4Z" /><path d="M9 19v-6h6v6" /></>,
   arena: <><path d="M4 17.5 9 12l3 2.5L20 6" /><path d="M15.5 6H20v4.5" /><path d="M4 20h16" /></>,
+  lab: <><path d="M9 3h6M10 3v6l-5 8a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-8V3" /><path d="M8 14h8M10 17h.01M14 16h.01" /></>,
   leaderboard: <><path d="M8 20v-7h3v7M13 20V7h3v13M18 20v-9h3v9M3 20h18" /></>,
   history: <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3.5 2" /></>,
   tokenomics: <><circle cx="12" cy="12" r="8" /><path d="M9.5 8.5h3.2a2 2 0 0 1 0 4h-1.4a2 2 0 0 0 0 4h3.2M12 6.5v11" /></>,

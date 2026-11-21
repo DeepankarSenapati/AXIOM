@@ -3,9 +3,11 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from backend.api import admin, arena, auth, bots, governance, tech, tokenomics
+from backend.api import admin, arena, auth, bots, governance, lab, tech, tokenomics
 from backend.db.seed import seed_users
 from backend.db.session import get_db, init_db
 
@@ -34,6 +36,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="AXIOM", description="Autonomous eXchange for Intelligent Operations & Markets")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return useful errors without echoing input that may not be JSON-safe."""
+    errors = [
+        {"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,6 +90,7 @@ def on_startup() -> None:
 app.include_router(auth.router)
 app.include_router(bots.router)
 app.include_router(arena.router)
+app.include_router(lab.router)
 app.include_router(tokenomics.router)
 app.include_router(governance.router)
 app.include_router(admin.router)

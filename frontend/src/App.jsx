@@ -1,17 +1,24 @@
+import { lazy, Suspense } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { getUser, isAuthenticated, logout } from "./auth.js";
 import { BrandMark, NavIcon } from "./components/Brand.jsx";
-import AdminDashboard from "./pages/AdminDashboard.jsx";
-import BotArena from "./pages/BotArena.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Governance from "./pages/Governance.jsx";
-import GovernanceDashboard from "./pages/GovernanceDashboard.jsx";
-import History from "./pages/History.jsx";
-import Leaderboard from "./pages/Leaderboard.jsx";
-import Login from "./pages/Login.jsx";
-import MarketDashboard from "./pages/MarketDashboard.jsx";
-import TechDashboard from "./pages/TechDashboard.jsx";
-import Tokenomics from "./pages/Tokenomics.jsx";
+
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard.jsx"));
+const BotArena = lazy(() => import("./pages/BotArena.jsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const Governance = lazy(() => import("./pages/Governance.jsx"));
+const GovernanceDashboard = lazy(() => import("./pages/GovernanceDashboard.jsx"));
+const History = lazy(() => import("./pages/History.jsx"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard.jsx"));
+const Login = lazy(() => import("./pages/Login.jsx"));
+const SurvivalLab = lazy(() => import("./pages/SurvivalLab.jsx"));
+const MarketDashboard = lazy(() => import("./pages/MarketDashboard.jsx"));
+const TechDashboard = lazy(() => import("./pages/TechDashboard.jsx"));
+const Tokenomics = lazy(() => import("./pages/Tokenomics.jsx"));
+
+function PageLoading() {
+  return <div className="page-loading" role="status"><span aria-hidden="true" />Loading page…</div>;
+}
 
 // ---------------------------------------------------------------------------
 // Role-aware navigation
@@ -20,6 +27,7 @@ import Tokenomics from "./pages/Tokenomics.jsx";
 const NAV_ADMIN = [
   { to: "/admin", label: "Admin", icon: "admin" },
   { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { to: "/lab", label: "Survival Lab", icon: "lab" },
   { to: "/arena", label: "Bot Arena", icon: "arena" },
   { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { to: "/history", label: "History", icon: "history" },
@@ -29,6 +37,7 @@ const NAV_ADMIN = [
 
 const NAV_TECH = [
   { to: "/tech", label: "My Bots", icon: "tech" },
+  { to: "/lab", label: "Survival Lab", icon: "lab" },
   { to: "/arena", label: "Bot Arena", icon: "arena" },
   { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { to: "/history", label: "History", icon: "history" },
@@ -36,6 +45,7 @@ const NAV_TECH = [
 
 const NAV_GOV = [
   { to: "/governance-co", label: "Gov Dashboard", icon: "governance" },
+  { to: "/lab", label: "Survival Lab", icon: "lab" },
   { to: "/governance", label: "Governance Voting", icon: "governance" },
   { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { to: "/history", label: "History", icon: "history" },
@@ -43,6 +53,7 @@ const NAV_GOV = [
 
 const NAV_MARKET = [
   { to: "/market", label: "Market", icon: "market" },
+  { to: "/lab", label: "Survival Lab", icon: "lab" },
   { to: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { to: "/governance", label: "Governance", icon: "governance" },
   { to: "/history", label: "History", icon: "history" },
@@ -164,12 +175,14 @@ function AppLayout() {
           </div>
         </header>
         <main className="page-content">
+        <Suspense fallback={<PageLoading />}>
         <Routes>
           {/* Role-based home redirect */}
           <Route path="/" element={<RoleHome />} />
 
           {/* Shared routes (all authenticated roles) */}
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/lab" element={<SurvivalLab />} />
           <Route path="/arena" element={<BotArena />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/history" element={<History />} />
@@ -210,6 +223,7 @@ function AppLayout() {
             }
           />
         </Routes>
+        </Suspense>
         </main>
       </div>
     </div>
@@ -224,7 +238,7 @@ export default function App() {
   return (
     <Routes>
       {/* Public */}
-      <Route path="/login" element={<Login />} />
+      <Route path="/login" element={<Suspense fallback={<PageLoading />}><Login /></Suspense>} />
 
       {/* Protected — everything else */}
       <Route

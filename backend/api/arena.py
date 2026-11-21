@@ -17,11 +17,10 @@ from backend.api.models import (
 from backend.bots.registry import UnknownStrategyError, get_strategy_class
 from backend.db.models import DBBacktestRun, DBBot
 from backend.db.session import get_db
-from backend.engine.arena import Arena
 from backend.engine.backtester import Backtester
 from backend.engine.bot_runner import BotRunner
 from backend.engine.market_feed import CCXTFeed, MarketFeedError, MockMarketFeed, YFinanceFeed
-from backend.engine.models import BacktestResult
+from backend.engine.models import BacktestResult, Candle, TradeRecord
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -44,7 +43,7 @@ def _build_runner(bot: DBBot, symbol: str, starting_cash: float) -> BotRunner:
     return BotRunner(bot_id=bot.id, strategy=strategy, starting_cash=starting_cash)
 
 
-def _fetch_candles(payload: RunArenaRequest | BacktestRequest) -> list:
+def _fetch_candles(payload: RunArenaRequest | BacktestRequest) -> list[Candle]:
     if payload.data_source == "live":
         try:
             if _is_indian_symbol(payload.symbol):
@@ -82,21 +81,26 @@ def _calc_benchmark(candles: list, starting_cash: float) -> float:
 
 
 def _compute_win_rate(result: BacktestResult) -> float:
-    """Fraction of completed BUY→SELL round trips that were profitable."""
-    trades = [r for r in result.trade_records if r.action_type in ("BUY", "SELL")]
-    if not trades:
-        return 0.0
-    sell_pnl_changes: list[float] = []
-    last_buy_pnl: float | None = None
-    for r in trades:
-        if r.action_type == "BUY":
-            last_buy_pnl = r.pnl
-        elif r.action_type == "SELL" and last_buy_pnl is not None:
-            sell_pnl_changes.append(r.pnl - last_buy_pnl)
-            last_buy_pnl = None
-    if not sell_pnl_changes:
-        return 0.0
-    return sum(1 for p in sell_pnl_changes if p > 0) / len(sell_pnl_changes)
+    """Fraction of nonzero sell fills profitable versus weighted average entry.
+
+    Legacy fills contain no commissions; this is not a cost-adjusted metric.
+    Multiple buys and partial sells retain the remaining position's cost basis.
+    """
+    holdings: dict[str, tuple[float, float]] = {}
+    profits: list[float] = []
+    for trade in result.trade_records:
+        if trade.quantity <= 0:
+            continue
+        quantity, cost_basis = holdings.get(trade.symbol, (0.0, 0.0))
+        if trade.action_type == "BUY":
+            holdings[trade.symbol] = (quantity + trade.quantity, cost_basis + trade.quantity * trade.price)
+        elif trade.action_type == "SELL" and quantity > 0:
+            sold = min(quantity, trade.quantity)
+            average_entry = cost_basis / quantity
+            profits.append((trade.price - average_entry) * sold)
+            remaining = max(0.0, quantity - sold)
+            holdings[trade.symbol] = (remaining, average_entry * remaining)
+    return sum(profit > 0 for profit in profits) / len(profits) if profits else 0.0
 
 
 def _persist_run(
@@ -133,6 +137,20 @@ def _persist_run(
     db.commit()
 
 
+def _trade_to_response(record: TradeRecord) -> TradeRecordResponse:
+    return TradeRecordResponse(
+        bot_id=record.bot_id,
+        symbol=record.symbol,
+        action_type=record.action_type,
+        quantity=record.quantity,
+        price=record.price,
+        timestamp=record.timestamp,
+        reason=record.reason,
+        cash_after=record.cash_after,
+        pnl=record.pnl,
+    )
+
+
 def _to_response(result: BacktestResult, win_rate: float = 0.0, benchmark_pnl: float = 0.0) -> BacktestResultResponse:
     alpha = round(result.final_pnl - benchmark_pnl, 2)
     return BacktestResultResponse(
@@ -146,20 +164,8 @@ def _to_response(result: BacktestResult, win_rate: float = 0.0, benchmark_pnl: f
         max_drawdown=result.max_drawdown,
         benchmark_pnl=benchmark_pnl,
         alpha=alpha,
-        trade_records=[
-            TradeRecordResponse(
-                bot_id=r.bot_id,
-                symbol=r.symbol,
-                action_type=r.action_type,
-                quantity=r.quantity,
-                price=r.price,
-                timestamp=r.timestamp,
-                reason=r.reason,
-                cash_after=r.cash_after,
-                pnl=r.pnl,
-            )
-            for r in result.trade_records
-        ],
+        trade_records=[_trade_to_response(record) for record in result.trade_records],
+        equity_records=[_trade_to_response(record) for record in result.equity_records],
     )
 
 
@@ -171,28 +177,40 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
     if missing:
         raise HTTPException(status_code=404, detail=f"Bots not found or inactive: {sorted(missing)}")
 
-    candles = _fetch_candles(payload)
-    benchmark_pnl = _calc_benchmark(candles, payload.starting_cash)
+    # A symbol override must change the market data, not merely the action label.
+    # Fetch each distinct symbol once so bots on the same market see identical bars.
+    candles_by_symbol: dict[str, list[Candle]] = {}
+    benchmarks_by_symbol: dict[str, float] = {}
+    for bot in bots:
+        symbol = payload.bot_symbols.get(bot.id, payload.symbol)
+        if symbol not in candles_by_symbol:
+            symbol_payload = payload.model_copy(update={"symbol": symbol})
+            candles = _fetch_candles(symbol_payload)
+            candles_by_symbol[symbol] = candles
+            benchmarks_by_symbol[symbol] = _calc_benchmark(candles, payload.starting_cash)
 
-    try:
-        runners = [
-            (bot.id, _build_runner(bot, payload.bot_symbols.get(bot.id, payload.symbol), payload.starting_cash))
-            for bot in bots
-        ]
-        arena = Arena(bots=runners)
-        arena_result = arena.run(candles)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Arena run failed: {exc}") from exc
+    results: dict[str, BacktestResult] = {}
+    for bot in bots:
+        symbol = payload.bot_symbols.get(bot.id, payload.symbol)
+        try:
+            runner = _build_runner(bot, symbol, payload.starting_cash)
+            results[bot.id] = Backtester(runner).run(candles_by_symbol[symbol])
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Arena run failed: {exc}") from exc
 
-    bot_map: dict[str, DBBot] = {b.id: b for b in bots}
-    for bot_id, result in arena_result.results.items():
-        bot_symbol = payload.bot_symbols.get(bot_id, payload.symbol)
-        _persist_run(db, bot_map[bot_id], result, payload, symbol=bot_symbol, benchmark_pnl=benchmark_pnl)
+    for bot in bots:
+        symbol = payload.bot_symbols.get(bot.id, payload.symbol)
+        _persist_run(db, bot, results[bot.id], payload, symbol=symbol, benchmark_pnl=benchmarks_by_symbol[symbol])
 
     return ArenaResultResponse(
         results={
-            bot_id: _to_response(result, _compute_win_rate(result), benchmark_pnl)
-            for bot_id, result in arena_result.results.items()
+            bot.id: _to_response(
+                results[bot.id], _compute_win_rate(results[bot.id]),
+                benchmarks_by_symbol[payload.bot_symbols.get(bot.id, payload.symbol)],
+            )
+            for bot in bots
         }
     )
 

@@ -56,6 +56,9 @@ export default function Leaderboard() {
           <p className="page-subtitle">
             Ranked by average Sharpe ratio across all backtest runs.
           </p>
+          <p className="page-subtitle">
+            Historical and simulated scores can use different markets, periods, and starting balances. They are not standardized or directly comparable; Sharpe uses a fixed 252-period annualization.
+          </p>
         </div>
         <button
           onClick={fetchLeaderboard}

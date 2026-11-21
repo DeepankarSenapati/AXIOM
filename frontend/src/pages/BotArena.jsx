@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AreaChart, Area,
   LineChart, Line,
@@ -120,20 +121,6 @@ function Spinner() {
   );
 }
 
-function winRate(records) {
-  const trades = records.filter((r) => r.action_type === "BUY" || r.action_type === "SELL");
-  if (trades.length === 0) return null;
-  // A trade "wins" if portfolio PnL improved vs the previous record
-  let wins = 0;
-  for (let i = 1; i < records.length; i++) {
-    if (
-      (records[i].action_type === "BUY" || records[i].action_type === "SELL") &&
-      Number(records[i].pnl ?? 0) > Number(records[i - 1].pnl ?? 0)
-    ) wins++;
-  }
-  return ((wins / trades.length) * 100).toFixed(1);
-}
-
 // ---------------------------------------------------------------------------
 // Single-bot equity area chart
 // ---------------------------------------------------------------------------
@@ -213,22 +200,24 @@ function ArenaComparison({ results, bots, startCash }) {
   if (entries.length === 0) return null;
   const cash = Number(startCash) || 10000;
 
-  // Build merged tick-by-tick dataset: [{tick:1, botId1: equity, botId2: equity, ...}]
-  const maxLen = Math.max(...entries.map(([, r]) => r.trade_records.length));
-  const merged = Array.from({ length: maxLen }, (_, i) => {
-    const row = { tick: i + 1 };
-    entries.forEach(([botId, res]) => {
-      const rec = res.trade_records[i];
-      row[botId] = rec ? parseFloat((cash + Number(rec.pnl ?? 0)).toFixed(2)) : null;
+  // Align full per-candle curves by actual timestamp, never by trade index.
+  const byTime = new Map();
+  entries.forEach(([botId, res]) => {
+    (res.equity_records ?? []).forEach((record) => {
+      const timestamp = new Date(record.timestamp).getTime();
+      if (!Number.isFinite(timestamp)) return;
+      const row = byTime.get(timestamp) ?? { timestamp };
+      row[botId] = parseFloat((Number(res.start_cash ?? cash) + Number(record.pnl ?? 0)).toFixed(2));
+      byTime.set(timestamp, row);
     });
-    return row;
   });
+  const merged = [...byTime.values()].sort((a, b) => a.timestamp - b.timestamp);
 
   const ComparisonTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs space-y-1">
-        <p className="text-gray-400 mb-1">Tick {label}</p>
+        <p className="text-gray-400 mb-1">{new Date(Number(label)).toLocaleString()}</p>
         {payload.map((p) => (
           <p key={p.dataKey} style={{ color: p.color }}>
             {p.name}: <span className="font-mono">${Number(p.value).toFixed(2)}</span>
@@ -241,7 +230,8 @@ function ArenaComparison({ results, bots, startCash }) {
   // Summary table data — sorted by final PnL descending
   const summary = entries.map(([botId, res], idx) => {
     const bot = bots.find((b) => b.id === botId);
-    const wr = winRate(res.trade_records);
+    const hasSale = res.trade_records.some((record) => record.action_type === "SELL" && Number(record.quantity) > 0);
+    const wr = hasSale ? (Number(res.win_rate ?? 0) * 100).toFixed(1) : null;
     return {
       botId,
       name: bot?.name ?? botId.slice(0, 8),
@@ -268,7 +258,7 @@ function ArenaComparison({ results, bots, startCash }) {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={merged} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-              <XAxis dataKey="tick" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#374151" }} />
+              <XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value) => new Date(value).toLocaleDateString()} tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#374151" }} />
               <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} width={62} />
               <Tooltip content={<ComparisonTooltip />} />
               <Legend
@@ -607,6 +597,7 @@ function BotArenaPage() {
         <p className="page-kicker">Research & simulation</p>
         <h1>Bot Arena</h1>
         <p className="page-subtitle">Put strategies to the test and compare their performance.</p>
+        <p className="page-subtitle">Legacy replay uses same-candle close fills, excludes costs, and annualizes Sharpe with 252 periods regardless of timeframe. Try the <Link to="/lab" className="text-indigo-400 underline">Survival Lab</Link> for next-candle fills and simulated costs.</p>
       </div></div>
 
       {/* ── Single Bot Backtest ── */}
@@ -684,7 +675,7 @@ function BotArenaPage() {
                 </div>
               ))}
             </div>
-            <EquityCurve records={btResult.trade_records} startCash={Number(btResult.start_cash) || 10000} />
+            <EquityCurve records={btResult.equity_records} startCash={Number(btResult.start_cash) || 10000} />
             <TradeTable records={btResult.trade_records} showExportCSV={true} />
           </div>
         )}

@@ -6,6 +6,7 @@ import pytest
 from backend.engine.backtester import Backtester
 from backend.engine.bot_runner import BotRunner
 from backend.engine.models import Action, BacktestResult, Candle, Portfolio
+from backend.api.arena import _to_response
 from tests.conftest import (
     AlwaysHoldStrategy,
     BuyThenSellStrategy,
@@ -57,17 +58,38 @@ def test_result_bot_id_matches_runner(
 # trade_records
 # ---------------------------------------------------------------------------
 
-def test_trade_records_count_equals_candle_count(
+def test_trade_records_exclude_hold_decisions(
     hold_runner: BotRunner, three_candles: list[Candle]
 ) -> None:
     result = Backtester(hold_runner).run(three_candles)
-    assert len(result.trade_records) == 3
+    assert result.trade_records == []
+    assert result.total_trades == 0
 
 
 def test_trade_records_empty_for_empty_candles() -> None:
     runner = BotRunner("bot1", AlwaysHoldStrategy(), starting_cash=500.0)
     result = Backtester(runner).run([])
     assert result.trade_records == []
+
+
+def test_equity_series_includes_hold_candles_and_reaches_final_pnl(
+    three_candles: list[Candle],
+) -> None:
+    class _BuyThenHold(AlwaysHoldStrategy):
+        def on_candle(self, candles: list[Candle], portfolio: Portfolio) -> Action:
+            if len(candles) == 1:
+                return Action(action_type="BUY", symbol=candles[-1].symbol, quantity=1.0, reason="buy")
+            return super().on_candle(candles, portfolio)
+
+    result = Backtester(BotRunner("bot1", _BuyThenHold(), starting_cash=1_000.0)).run(three_candles)
+    response = _to_response(result)
+
+    assert [r.action_type for r in result.trade_records] == ["BUY"]
+    assert [r.action_type for r in result.equity_records] == ["BUY", "HOLD", "HOLD"]
+    assert [r.timestamp for r in result.equity_records] == [c.timestamp for c in three_candles]
+    assert result.equity_records[-1].pnl == pytest.approx(result.final_pnl)
+    assert result.final_pnl == pytest.approx(20.0)
+    assert [r.pnl for r in response.equity_records] == pytest.approx([0.0, 10.0, 20.0])
 
 
 # ---------------------------------------------------------------------------
