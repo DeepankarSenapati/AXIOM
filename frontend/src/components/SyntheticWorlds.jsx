@@ -100,7 +100,7 @@ export default function SyntheticWorlds({ scenario, experimentRunning, onBusyCha
               {world.guarded && <><div><dt>Guarded return</dt><dd>{percent(world.guarded.total_return_pct)}</dd></div><div><dt>Guarded drawdown</dt><dd>{percent(world.guarded.max_drawdown_pct, false)}</dd></div><div><dt>Guard triggered</dt><dd>{world.guarded.guard_trigger_index == null ? "No" : `Candle ${world.guarded.guard_trigger_index + 1}`}</dd></div><div><dt>Guard − bot equity</dt><dd>{formatEquityDelta(world.guarded.final_equity - world.unguarded.final_equity)}<br /><small>{describeEquityDelta(world.guarded.final_equity - world.unguarded.final_equity, results.comparison?.equity_equality_tolerance)}</small></dd></div></>}
             </dl>
             <p className="worlds-fingerprint" title={world.fingerprint} aria-label={`Run fingerprint ${world.fingerprint}`}>ID / {world.fingerprint.slice(0, 12)}…</p>
-            <button type="button" disabled={experimentRunning} onClick={() => onSelectSeed(world.seed)} aria-label={`Load seed ${world.seed} and the last experiment settings into the controls`}>Load world for replay <span aria-hidden="true">↗</span></button>
+            <button type="button" disabled={experimentRunning} onClick={() => onSelectSeed(world.seed, world.fingerprint)} aria-label={`Load seed ${world.seed} and the last experiment settings into the controls`}>Load world for replay <span aria-hidden="true">↗</span></button>
           </li>)}
         </ul>
         <details className="worlds-assumptions"><summary>About this sample and its assumptions</summary><ul>{results.assumptions.map((assumption, index) => <li key={index}>{assumption}</li>)}</ul></details>

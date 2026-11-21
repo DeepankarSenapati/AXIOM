@@ -197,6 +197,25 @@ def test_final_close_signal_expires_without_a_phantom_fill() -> None:
     assert run.final_equity == pytest.approx(1_000.0)
 
 
+def test_guard_blocked_final_buy_is_not_reported_as_expired() -> None:
+    candles = tape([(100, 100), (100, 90)])
+    request = request_for(2, guard_enabled=True, guard_drawdown_pct=3)
+    run = simulate_strategy(request, candles, ScriptedStrategy({0: ("BUY", 10), 1: ("BUY", 1)}), use_guard=True)
+
+    assert run.guard_trigger_index == 1
+    assert [event.candle_index for event in events_of(run, "blocked")] == [1]
+    assert events_of(run, "expired") == []
+    assert any("unblocked BUY or SELL" in item and "final close" in item for item in run_survival(request).assumptions)
+
+
+@pytest.mark.parametrize(("shock_index", "ordinal"), [(25, 26), (None, 34)])
+def test_shock_assumption_uses_displayed_one_based_candle(shock_index: int | None, ordinal: int) -> None:
+    request = request_for(50, shock_pct=20, shock_index=shock_index)
+    run = run_survival(request)
+    assert run.scenario.shock_index == ordinal - 1
+    assert any(f"gap is applied at candle {ordinal}." in item for item in run.assumptions)
+
+
 def test_fees_and_slippage_are_adverse_and_buy_is_affordable() -> None:
     candles = tape([(100, 100), (100, 100), (100, 100)])
     request = request_for(3, starting_cash=1_000.0, fee_bps=100.0, slippage_bps=100.0)

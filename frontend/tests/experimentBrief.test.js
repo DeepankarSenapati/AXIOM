@@ -140,3 +140,18 @@ test("the brief preserves small positive and negative returns and drawdown", () 
   assert.match(html, /Shocked return<\/span><b>−0\.0036%<\/b>/);
   assert.match(html, /Max close drawdown, unguarded<\/span><b>0\.0036%<\/b>/);
 });
+
+test("small nonzero experiment parameters are not displayed as zero", () => {
+  const data = fixture();
+  Object.assign(data.request, { start_price: 0.0001, shock_pct: 0.0001, fee_bps: 0.0001, slippage_bps: 0.0001, max_position_pct: 0.0001, guard_drawdown_pct: 0.0001 });
+  data.baseline.request = { ...data.request, shock_pct: 0 };
+  data.shock.request = { ...data.request };
+  data.shock.scenario.shock_pct = data.request.shock_pct;
+  const html = buildExperimentBrief(data);
+  assert.match(html, /Starting price<\/dt><dd>\$0\.000100<\/dd>/);
+  assert.match(html, /Shock<\/dt><dd>0\.000100% at candle 2<\/dd>/);
+  assert.match(html, /Fee per fill<\/dt><dd>0\.000100 bps<\/dd>/);
+  assert.match(html, /Slippage per fill<\/dt><dd>0\.000100 bps<\/dd>/);
+  assert.match(html, /Buy cap<\/dt><dd>0\.000100%/);
+  assert.match(html, /Pause buys at 0\.000100% drawdown/);
+});

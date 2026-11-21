@@ -94,3 +94,23 @@ def test_arena_fetches_each_bot_market_and_persists_its_own_benchmark(
     assert rows["b"].symbol == "BBB"
     assert rows["a"].benchmark_pnl == rows["c"].benchmark_pnl == pytest.approx(100.0)
     assert rows["b"].benchmark_pnl == pytest.approx(-100.0)
+
+
+def test_arena_records_each_market_actual_candle_count(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for bot_id in ("a", "b"):
+        db_session.add(DBBot(id=bot_id, name=f"Bot {bot_id}", strategy_name="simple_ma", is_active=True,
+                             created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    db_session.commit()
+    markets = {"AAA": market_candles("AAA", [100, 110]), "BBB": market_candles("BBB", [200, 190, 180])}
+    monkeypatch.setattr(arena, "_fetch_candles", lambda payload: markets[payload.symbol])
+    monkeypatch.setattr(arena, "_build_runner", lambda bot, symbol, cash: BotRunner(bot.id, BuyOnce(symbol), cash))
+    result = arena.run_arena(RunArenaRequest(
+        bot_ids=["a", "b"], symbol="AAA", bot_symbols={"b": "BBB"}, num_candles=100,
+    ), db_session)
+    assert len(result.results["a"].equity_records) == 2
+    assert len(result.results["b"].equity_records) == 3
+    rows = {row.bot_id: row for row in db_session.query(DBBacktestRun).all()}
+    assert rows["a"].num_candles == 2
+    assert rows["b"].num_candles == 3

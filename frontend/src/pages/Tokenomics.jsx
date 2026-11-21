@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { apiFetch } from "../auth.js";
-
-const PIE_DATA = [
-  { name: "Public (70%)", value: 70, color: "#6366f1" },
-  { name: "Tech (15%)",   value: 15, color: "#10b981" },
-  { name: "Gov (15%)",    value: 15, color: "#f59e0b" },
-];
 
 function BalanceBar({ label, amount, total, colorClass }) {
   const pct = total > 0 ? (amount / total) * 100 : 0;
@@ -25,19 +19,20 @@ function BalanceBar({ label, amount, total, colorClass }) {
 
 function DistributionResult({ result }) {
   const shares = [
-    { label: "Public Pool", amount: result.public_share, color: "text-indigo-400", bg: "bg-indigo-900/30 border-indigo-800" },
-    { label: "Tech Pool", amount: result.tech_share,   color: "text-emerald-400", bg: "bg-emerald-900/30 border-emerald-800" },
-    { label: "Governance Pool", amount: result.gov_share,    color: "text-amber-400",   bg: "bg-amber-900/30 border-amber-800" },
+    { label: "Public Pool", amount: result.public_share, color: "text-indigo-400", bg: "bg-indigo-900/30 border-indigo-800", chartColor: "#6366f1" },
+    { label: "Tech Pool", amount: result.tech_share, color: "text-emerald-400", bg: "bg-emerald-900/30 border-emerald-800", chartColor: "#10b981" },
+    { label: "Governance Pool", amount: result.gov_share, color: "text-amber-400", bg: "bg-amber-900/30 border-amber-800", chartColor: "#f59e0b" },
   ];
   const platformFee = result.platform_fee ?? 0;
   const distributable = result.distributable ?? result.total_revenue;
+  const pieData = shares.map((share) => ({ name: share.label, value: share.amount, color: share.chartColor }));
 
   const CustomTooltip = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs">
         <p style={{ color: payload[0].payload.color }}>{payload[0].name}</p>
-        <p className="text-gray-100">{payload[0].value}%</p>
+        <p className="text-gray-100">${payload[0].value.toFixed(2)} · {distributable > 0 ? ((payload[0].value / distributable) * 100).toFixed(1) : "0.0"}%</p>
       </div>
     );
   };
@@ -71,18 +66,19 @@ function DistributionResult({ result }) {
         <div className="h-36 w-36 flex-shrink-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={PIE_DATA} cx="50%" cy="50%" innerRadius={28} outerRadius={52} paddingAngle={3} dataKey="value">
-                {PIE_DATA.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={28} outerRadius={52} dataKey="value">
+                {pieData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
               </Pie>
               <Tooltip content={<CustomTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
         <div className="space-y-2">
-          {PIE_DATA.map((d) => (
+          <p className="text-xs text-gray-400">Actual allocation after rounding</p>
+          {pieData.map((d) => (
             <div key={d.name} className="flex items-center gap-2 text-xs">
               <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
-              <span className="text-gray-400">{d.name}</span>
+              <span className="text-gray-400">{d.name}: ${d.value.toFixed(2)}</span>
             </div>
           ))}
           <p className="text-xs text-gray-600 pt-1">

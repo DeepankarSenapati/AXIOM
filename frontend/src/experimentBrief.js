@@ -55,6 +55,7 @@ const esc = escapeHtml;
 
 function fmt(value, digits) {
   const out = value.toFixed(digits);
+  if (value !== 0 && Number(out) === 0) return value.toPrecision(3);
   return out === "-0" || /^-0\.0*$/.test(out) ? out.slice(1) : out;
 }
 
@@ -342,7 +343,7 @@ export function buildExperimentBrief({ request, baseline, shock } = {}) {
     ["Seed", String(seed)],
     ["Candles", String(count)],
     ["Starting cash", money(startingCash)],
-    ["Starting price", money(startPrice)],
+    ["Starting price", startPrice < 0.005 ? `$${startPrice.toPrecision(3)}` : money(startPrice)],
     ["Shock", hasShock ? `${fmt(shockPct, 2)}% at candle ${shockIndex + 1}` : "No shock"],
     ["Fee per fill", `${fmt(feeBps, 2)} bps`],
     ["Slippage per fill", `${fmt(slipBps, 2)} bps`],

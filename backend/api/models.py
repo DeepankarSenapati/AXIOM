@@ -378,6 +378,7 @@ class BotProfileResponse(BaseModel):
     name: str
     strategy_key: str
     status: str
+    is_active: bool
     description: str | None
     created_at: datetime
     tech_company_name: str | None    # company_name of the submitting user

@@ -49,6 +49,7 @@ def my_dashboard(
             .filter(
                 DBToken.bot_id == bot.id,
                 DBToken.holder_address.notin_(_SYSTEM_WALLETS),
+                DBToken.balance > 0,
             )
             .all()
         )
@@ -77,7 +78,7 @@ def my_dashboard(
 
     summary = TechDashboardSummary(
         total_bots=len(bots),
-        approved_bots=sum(1 for b in bots if b.status in ("approved", "live")),
+        approved_bots=sum(1 for b in bots if b.is_active and b.status in ("approved", "live")),
         total_your_earnings=round(total_your_earnings, 4),
         total_distributions=total_distributions,
         total_token_holders=len(all_holder_addresses),

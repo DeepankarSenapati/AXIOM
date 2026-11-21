@@ -175,7 +175,7 @@ function GovRevenue() {
     <div className="card">
       <h2 className="text-sm font-semibold text-gray-300 mb-2">Revenue Summary</h2>
       <p className="text-sm text-gray-500">Governance revenue tracking coming soon.</p>
-      <p className="text-xs text-gray-600 mt-1">The simulated governance pool receives a 15% allocation; it is not a user wallet credit.</p>
+      <p className="text-xs text-gray-600 mt-1">The simulated governance pool targets 15% before rounding to cents; this is not a user wallet credit.</p>
     </div>
   );
 }

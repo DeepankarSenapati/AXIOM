@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { marketUnit } from "../arenaPresentation.js";
+import { observedPnlMaximum, simulatedAmount } from "../dashboardPresentation.js";
 
 const STRATEGIES = ["simple_ma", "rsi", "bollinger_bands", "macd", "momentum"];
 
@@ -77,25 +79,23 @@ function StrategyBadges() {
   );
 }
 
-function TopPerformerCard() {
-  const [best, setBest] = useState(null);
+function RecentRunCard() {
+  const [latest, setLatest] = useState(null);
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
     setFetching(true);
-    fetch("/arena/history/best")
+    fetch("/arena/history?limit=1")
       .then((r) => {
-        if (r.status === 404) return null;
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((data) => {
-        console.log("[TopPerformerCard] fetch result:", data);
-        setBest(data);
+        setLatest(Array.isArray(data) ? data[0] ?? null : null);
       })
       .catch((e) => {
-        console.error("[TopPerformerCard] fetch error:", e);
-        setBest(null);
+        console.error("[RecentRunCard] fetch error:", e);
+        setLatest(null);
       })
       .finally(() => setFetching(false));
   }, []);
@@ -115,51 +115,46 @@ function TopPerformerCard() {
     });
   }
 
-  function formatCurrency(val) {
-    const n = Number(val ?? 0);
-    const abs = Math.abs(n).toFixed(2);
-    return n >= 0 ? `+$${abs}` : `-$${abs}`;
-  }
-
   return (
     <div className="card">
-      <h2 className="text-sm font-semibold text-gray-300 mb-3">Top Performer</h2>
+      <h2 className="text-sm font-semibold text-gray-300 mb-3">Most Recent Backtest</h2>
       {fetching && (
         <p className="text-sm text-gray-500">Loading…</p>
       )}
-      {!fetching && !best && (
+      {!fetching && !latest && (
         <p className="text-sm text-gray-500">
           No runs yet — go to <span className="text-indigo-400">Bot Arena</span>
         </p>
       )}
-      {!fetching && best && (
+      {!fetching && latest && (
         <div className="space-y-3">
+          <p className="text-xs text-gray-400">One past simulated run, not a performance ranking. Results depend on the market, period, and starting balance.</p>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-base font-bold text-gray-100">{best.bot_name}</span>
+            <span className="text-base font-bold text-gray-100">{latest.bot_name}</span>
             <span className="badge badge-blue">
-              {strategyLabel[best.strategy_key] ?? best.strategy_key}
+              {strategyLabel[latest.strategy_key] ?? latest.strategy_key}
             </span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <p className="text-xs text-gray-500">Best PnL</p>
-              <p className={`text-lg font-semibold font-mono ${Number(best.final_pnl) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {formatCurrency(best.final_pnl)}
+              <p className="text-xs text-gray-500">Final PnL · simulated</p>
+              <p className={`text-lg font-semibold font-mono ${Number(latest.final_pnl) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {simulatedAmount(latest.final_pnl, marketUnit(latest.symbol))}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Symbol</p>
-              <p className="text-sm font-mono text-gray-200">{best.symbol}</p>
+              <p className="text-sm font-mono text-gray-200">{latest.symbol}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Sharpe Ratio</p>
-              <p className={`text-sm font-mono ${Number(best.sharpe_ratio) >= 1 ? "text-emerald-400" : Number(best.sharpe_ratio) < 0 ? "text-red-400" : "text-gray-300"}`}>
-                {Number(best.sharpe_ratio ?? 0).toFixed(2)}
+              <p className={`text-sm font-mono ${Number(latest.sharpe_ratio) >= 1 ? "text-emerald-400" : Number(latest.sharpe_ratio) < 0 ? "text-red-400" : "text-gray-300"}`}>
+                {Number(latest.sharpe_ratio ?? 0).toFixed(2)}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Run Date</p>
-              <p className="text-sm text-gray-400">{formatDate(best.created_at)}</p>
+              <p className="text-sm text-gray-400">{formatDate(latest.created_at)}</p>
             </div>
           </div>
         </div>
@@ -270,8 +265,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Top Performer */}
-      <TopPerformerCard />
+      <RecentRunCard />
 
       {/* Create bot */}
       <div className="card">
@@ -336,6 +330,7 @@ export default function Dashboard() {
       {/* Bot list */}
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-300 mb-3">Registered Bots</h2>
+        <p className="text-xs text-gray-400 mb-3">Run counts and raw maxima use the latest 500 runs across all bots. A maximum may combine different markets, periods, and starting balances; it is not a performance ranking. Mixed or unknown units are not compared.</p>
         {loading && <p className="text-sm text-gray-500">Loading…</p>}
         {error && <p className="text-sm text-red-400">Error: {error}</p>}
         {!loading && !error && bots.length === 0 && (
@@ -349,7 +344,7 @@ export default function Dashboard() {
                 <th className="th">Strategy</th>
                 <th className="th">Status</th>
                 <th className="th">Runs</th>
-                <th className="th">Best PnL</th>
+                <th className="th">Highest raw PnL</th>
                 <th className="th">Created</th>
                 <th className="th">ID</th>
                 <th className="th"></th>
@@ -372,15 +367,14 @@ export default function Dashboard() {
                   </td>
                   <td className="td">
                     {(() => {
-                      const runs = historyByBot[bot.id];
-                      if (!runs || runs.length === 0) {
+                      const summary = observedPnlMaximum(historyByBot[bot.id]);
+                      if (summary.kind === "empty" || summary.kind === "unavailable") {
                         return <span className="text-gray-600">—</span>;
                       }
-                      const bestPnl = Math.max(...runs.map(r => Number(r.final_pnl ?? 0)));
-                      const abs = Math.abs(bestPnl).toFixed(2);
-                      return bestPnl >= 0
-                        ? <span className="badge badge-green font-mono">+${abs}</span>
-                        : <span className="badge badge-red font-mono">-${abs}</span>;
+                      if (summary.kind === "mixed") {
+                        return <span className="text-gray-400 text-xs">Mixed or unknown units</span>;
+                      }
+                      return <span className="font-mono text-gray-300">{simulatedAmount(summary.value, summary.unit)}</span>;
                     })()}
                   </td>
                   <td className="td text-gray-500">{new Date(bot.created_at).toLocaleDateString()}</td>

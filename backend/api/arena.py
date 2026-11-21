@@ -20,7 +20,9 @@ from backend.db.models import DBBacktestRun, DBBot
 from backend.db.session import get_db
 from backend.engine.backtester import Backtester
 from backend.engine.bot_runner import BotRunner
-from backend.engine.market_feed import CCXTFeed, MarketFeedError, MockMarketFeed, YFinanceFeed
+from backend.engine.market_feed import (
+    CCXTFeed, MarketFeedError, MockMarketFeed, UnsupportedMarketTimeframe, YFinanceFeed,
+)
 from backend.engine.models import BacktestResult, Candle, TradeRecord
 
 router = APIRouter(prefix="/arena", tags=["arena"])
@@ -63,6 +65,8 @@ def _fetch_candles(payload: RunArenaRequest | BacktestRequest) -> list[Candle]:
                 timeframe=payload.timeframe,
                 limit=payload.num_candles,
             )
+        except UnsupportedMarketTimeframe as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except MarketFeedError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
     seed = getattr(payload, "seed", None)
@@ -129,7 +133,7 @@ def _persist_run(
         symbol=effective_symbol,
         timeframe=payload.timeframe,
         data_source=payload.data_source,
-        num_candles=payload.num_candles,
+        num_candles=len(result.equity_records),
         starting_cash=payload.starting_cash,
         final_pnl=result.final_pnl,
         end_cash=result.end_cash,

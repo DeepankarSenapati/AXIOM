@@ -22,25 +22,53 @@ to interrogate.
 
 ## A three-minute demonstration
 
-1. **Ask a question:** “What happens to this bot if the market gaps down?”
-2. Run the default RSI experiment. Show the baseline and shocked paths, fees,
-   drawdown and guard. The decision comparison shows the blocked buy at candle
-   91 alongside the unguarded path's recorded next-open fill. Use the evidence
-   trail to inspect the block. The shock is at the open, while the guard is
-   checked at the close; a pending order could fill before that guard check.
-3. Set Synthetic Worlds to 12 and run it. Point to both better and worse
-   guarded outcomes; load one seed, rerun it and match its fingerprint.
-   Explain that the guard does not guarantee a loss limit.
-4. Generate Shock Landscape to compare shock and fee combinations on the same
-   artificial seed. Highlight exposure before the gap so that a strategy that
-   happened to hold no position is not mistaken for proven crash resilience.
-5. Download the passport and replay it. Compare the recorded fingerprints with
-   the new calculation, then explain what is reproducible—and what is not:
-   this is generated data and a self-reported fingerprint, not proof of the
-   file contents, source code or execution, independent verification, or
-   evidence of real trading.
-6. Close with the next milestone: interviews and independent validation on
-   historical, out-of-sample data before any claim of product-market fit.
+**Prepare:** start the local demo, sign in and open Survival Lab. Reload the
+page to restore its default controls. This script's numbers use RSI, seed 42,
+160 candles, a 12% shock at candle 91, a 3% drawdown guard, 10 bps fees and
+5 bps slippage. Fees of 10 bps mean 0.1% per simulated fill. Set Synthetic
+Worlds to 12 when asked; it initially defaults to 6.
+
+1. **0:00–0:30 — The question and the boundary.** “What happens to an
+   automated strategy when the market gaps down, and can we explain its
+   decisions?” This local prototype has three built-in, rule-based
+   strategies and synthetic prices; it does not accept a customer's strategy
+   or trade real money.
+2. **0:30–1:20 — One decision.** Run the default experiment and point to the
+   scenario and guard results. In **One decision / two paths**, show the BUY
+   blocked at candle 91's close and the unguarded path's actual fill at candle
+   92's open. Click **Inspect the blocked signal** to open its recorder entry.
+   The shock happens at the open, while the guard checks at the close; an
+   earlier pending order could fill before that check. The guard pauses new
+   buys; it neither forces a sale nor guarantees a loss limit. The whole-run
+   guarded-minus-unguarded final equity is about −$2.98 in simulated USD; do
+   not attribute that entire difference to this one decision.
+3. **1:20–2:20 — A small sample, not a promise.** Set Synthetic Worlds to
+   12 and select **Generate worlds**. For these settings and seeds 42–53, the
+   guarded final equity is higher in 3, lower in 8 and equal within the shown
+   tolerance in 1. These are outcomes from one artificial generator, not
+   probabilities, forecasts or evidence of real-market performance. They
+   show that a guard can change outcomes in either direction.
+4. **2:20–3:00 — The next milestone.** “We want to help people evaluating
+   automated strategies understand assumptions and investigate failure
+   modes.” Identify strategy researchers and risk reviewers as prospective
+   users, then ask for introductions to interview them and for independent
+   historical, out-of-sample validation. Demand and willingness to pay remain
+   untested.
+
+### If there is time for questions
+
+- **Shock Landscape:** compare shock and fee combinations on one artificial
+  seed. Show exposure immediately before the gap; a run with no position at
+  that point is not proof of crash resilience.
+- **Passport:** download the JSON and replay it using **Replay a saved
+  passport**. The page compares recorded and newly calculated fingerprints.
+  A match is not proof of file contents, source code, execution, independent
+  verification or real trading.
+- **World replay:** load a seed, then run the experiment again. The replay
+  compares its fingerprint with the one recorded for that world; expand the
+  result to inspect both. The Worlds sample is replaced by the new run. As
+  with the passport, a match is not independent verification or proof of
+  execution.
 
 ## What already exists
 

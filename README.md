@@ -79,32 +79,76 @@ AXIOM is a platform where:
 - Python 3.11 or 3.12
 - Node.js 20.19+ within the 20.x line, or 22.12+ (as required by Vite)
 
-### 1. Install backend dependencies
+On a fresh machine, install [Python 3.12](https://www.python.org/downloads/release/python-31210/)
+(choose the macOS universal2 or Windows 64-bit installer) and
+[Node.js](https://nodejs.org/en/download), then open a new terminal. On macOS
+or Linux, check the versions with `python3.12 --version`, `node --version`,
+and `npm --version`. On Windows, use `py -3.12 --version` instead of the
+Python command. If Python 3.12 is not found, install it before continuing.
+Python 3.11 is also supported; substitute `3.11` in the commands below.
+
+### Quick start with an existing macOS setup
+
+If the existing `venv` and frontend dependencies are already installed, open
+Terminal and run:
 
 ```bash
-# From the project root
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS / Linux
+cd ~/Desktop/AXIOM  # Adjust this path if you moved the project
 source venv/bin/activate
-
-pip install -r requirements.txt
+python --version    # Should show Python 3.11 or 3.12
+python scripts/demo.py
 ```
+
+Open the printed URL, choose **Explore demo credentials** to sign in, and
+press Ctrl+C in the terminal when finished. If dependencies are missing,
+follow the installation steps below. Install and rehearse before the event;
+the Survival Lab runs locally after setup, while historical market data
+requires an internet connection.
+
+### 1. Install backend dependencies
+
+From the project root, create and activate the virtual environment:
+
+```bash
+# macOS / Linux
+python3.12 -m venv venv
+source venv/bin/activate
+```
+
+```powershell
+# Windows PowerShell
+py -3.12 -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+Then, with the environment activated, install the backend dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+If your working copy has moved this file to `backend/requirements.txt`, use
+`python -m pip install -r backend/requirements.txt` instead.
 
 ### 2. Install frontend dependencies
 
 ```bash
 cd frontend
 npm ci
+cd ..
 ```
 
-For a disposable one-command rehearsal after installing dependencies, activate
-the virtual environment and run `python scripts/demo.py` from the project root.
+On macOS or Linux, for a disposable one-command rehearsal after installing
+dependencies, activate the virtual environment and run this command from the
+project root:
+
+```bash
+python scripts/demo.py
+```
+
 It starts both local services with a temporary database; see the
 [demo guide](docs/SURVIVAL_LAB.md) for what persists and how to stop it.
+On Windows, use the two-terminal steps below instead.
 
 ### 3. Start the backend
 
@@ -210,6 +254,8 @@ Navigate to **Market Dashboard** → click a bot card → Buy button.
 - Each RST costs $0.01; new purchases use whole positive tokens
 - Purchase deducts from wallet balance
 - Tokens move from `public_pool` to the investor's address in the `tokens` table
+- New purchases are unavailable if a bot is deactivated; existing simulated
+  holdings can still be sold back.
 
 ### Step 7 — Distribute revenue (admin or governance_company)
 
@@ -457,7 +503,13 @@ PnL(t)         = (cash(t) + position_value(t)) - starting_cash
 |---|---|---|
 | `MockMarketFeed` | `data_source="mock"` | Uniform ±2% random walk, reproducible with a seed |
 | `CCXTFeed` | `data_source="live"`, crypto symbol | Real OHLCV from Binance public API via CCXT (read-only, no API key) |
-| `YFinanceFeed` | `data_source="live"`, `.NS` / `^` symbol | Real OHLCV from NSE India via yfinance |
+| `YFinanceFeed` | `data_source="live"`, `.NS` / `^` symbol | Historical OHLCV for Indian symbols via Yahoo Finance |
+
+Yahoo Finance does not provide native 4-hour candles through this integration;
+choose 1 hour or 1 day for those symbols. Historical runs can use fewer bars
+than requested when the provider supplies less data; new history records store
+the actual count. Older saved rows are not rewritten. Arena results use each
+market's quote units, with no currency conversion or exposure matching.
 
 ### Buy-and-Hold Benchmark
 

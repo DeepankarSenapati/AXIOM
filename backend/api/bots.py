@@ -148,7 +148,8 @@ def get_bot_profile(bot_id: str, db: Session = Depends(get_db)) -> BotProfileRes
             tech_holdings=tech_holdings,
             gov_holdings=gov_holdings,
             total=total,
-            investor_count=len(investor_rows),
+            # Sold-out ledger rows remain for history; they are not holders.
+            investor_count=sum(1 for row in investor_rows if row.balance > 0),
         )
 
     # Backtest aggregates
@@ -198,6 +199,7 @@ def get_bot_profile(bot_id: str, db: Session = Depends(get_db)) -> BotProfileRes
         name=bot.name,
         strategy_key=bot.strategy_name,
         status=bot.status,
+        is_active=bot.is_active,
         description=bot.description,
         created_at=bot.created_at,
         tech_company_name=tech_company_name,

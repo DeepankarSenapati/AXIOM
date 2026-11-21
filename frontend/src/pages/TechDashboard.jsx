@@ -54,7 +54,7 @@ function StatusBadge({ status }) {
 function SummaryCards({ summary, loading }) {
   const cards = [
     {
-      label: "Tech Pool Allocations (15%)",
+      label: "Tech Pool Allocations (15% target)",
       value: loading ? "—" : `$${fmtMoney(summary?.total_your_earnings ?? 0)}`,
       sub: "simulated allocations, not wallet credits",
       accent: "text-emerald-400",
@@ -118,8 +118,8 @@ function MyBotsEarnings({ bots, loading, error }) {
                 <th className="th">Bot Name</th>
                 <th className="th">Strategy</th>
                 <th className="th">Status</th>
-                <th className="th">Revenue Distributed</th>
-                <th className="th">Tech Pool 15%</th>
+                <th className="th">Gross Simulated Revenue</th>
+                <th className="th">Tech Pool Allocation</th>
                 <th className="th">Investors</th>
                 <th className="th">RST Circulating</th>
                 <th className="th">Distributions</th>
@@ -357,7 +357,7 @@ export default function TechDashboard() {
           <p className="page-kicker">Builder workspace</p>
           <h1>Tech Dashboard</h1>
           <p className="page-subtitle">
-            Simulated distributions allocate 15% of distributable revenue to the tech pool; this is not a credit to your wallet.
+            Simulated distributions target 15% of distributable revenue for the tech pool before rounding to cents; this is not a credit to your wallet.
           </p>
         </div>
         <button

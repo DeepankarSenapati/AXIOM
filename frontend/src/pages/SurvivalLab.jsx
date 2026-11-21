@@ -119,7 +119,7 @@ function Slider({ id, label, value, min, max, step = 1, suffix, description, onC
 function Legend({ guarded }) {
   return (
     <div className="lab-chart-legend" role="group" aria-label="Chart legend">
-      <span><i className="lab-key baseline" /> Baseline bot</span>
+      <span><i className="lab-key baseline" /> Baseline bot · no guard</span>
       <span><i className="lab-key shock" /> Scenario bot</span>
       {guarded && <span><i className="lab-key guarded" /> Scenario + guard</span>}
       <span><i className="lab-key benchmark" /> Scenario buy &amp; hold</span>
@@ -159,6 +159,8 @@ export default function SurvivalLab() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [navigationTarget, setNavigationTarget] = useState(null);
   const [loadedNotice, setLoadedNotice] = useState(null);
+  const [pendingWorld, setPendingWorld] = useState(null);
+  const [worldComparison, setWorldComparison] = useState(null);
   const passportAbortRef = useRef(null);
   const recorderRef = useRef(null);
   const seedInputRef = useRef(null);
@@ -223,6 +225,7 @@ export default function SurvivalLab() {
 
   function updateInput(key, value) {
     setLoadedNotice(null);
+    setPendingWorld(null);
     setInputs((current) => ({ ...current, [key]: value }));
   }
 
@@ -232,14 +235,17 @@ export default function SurvivalLab() {
     input?.scrollIntoView({ block: "center" });
   }
 
-  function loadWorldSeed(seed) {
+  function loadWorldSeed(seed, fingerprint) {
     setInputs({ ...applied, seed });
-    setLoadedNotice(`Seed ${seed} and the experiment settings are loaded. Run the experiment to replay.`);
+    setPendingWorld({ seed, fingerprint });
+    setWorldComparison(null);
+    setLoadedNotice(`Seed ${seed} and the experiment settings are loaded. Run the experiment to compare its fingerprint.`);
     focusSeed();
   }
 
   function loadLandscapeCell(request) {
     setInputs({ ...request });
+    setPendingWorld(null);
     setLoadedNotice(`Shock ${request.shock_pct}% and fee ${request.fee_bps} bps are loaded. Run the experiment to replay.`);
     focusSeed();
   }
@@ -254,6 +260,8 @@ export default function SurvivalLab() {
     }
     setRunning(true);
     setError("");
+    setWorldComparison(null);
+    setPassportComparison(null);
     setPlaying(false);
     const payload = { ...inputs, seed: parsedSeed.value };
     try {
@@ -261,6 +269,10 @@ export default function SurvivalLab() {
       setResults({ baseline, shock });
       setApplied({ ...payload });
       setLoadedNotice(null);
+      setWorldComparison(pendingWorld ? {
+        seed: pendingWorld.seed, recorded: pendingWorld.fingerprint, calculated: shock.fingerprint,
+      } : null);
+      setPendingWorld(null);
       setPassportComparison(null);
       setCursor(Math.max(0, shock.candles.length - 1));
       setReplayMode("shock");
@@ -277,6 +289,8 @@ export default function SurvivalLab() {
     const controller = new AbortController();
     passportAbortRef.current = controller;
     setPassportRunning(true);
+    setWorldComparison(null);
+    setPassportComparison(null);
     setPlaying(false);
     try {
       const { baseline, shock } = await runLab(passport.request, controller.signal);
@@ -288,6 +302,8 @@ export default function SurvivalLab() {
       setReplayMode("shock");
       setReplayGuarded(Boolean(shock.guarded));
       setLoadedNotice(null);
+      setPendingWorld(null);
+      setWorldComparison(null);
       setError("");
       setPassportComparison({
         baseline: { recorded: passport.baselineFingerprint, calculated: baseline.fingerprint },
@@ -412,7 +428,7 @@ export default function SurvivalLab() {
             <div className="lab-seed-row">
               <div>
                 <label htmlFor={`${controlId}-seed`}>Market seed</label>
-                <small id={`${controlId}-seed-help`} aria-live="polite">{loadedNotice ?? "Same seed, same generated market. Enter a whole number from 0 to 4,294,967,295."}</small>
+                <small id={`${controlId}-seed-help`} aria-live="polite">{loadedNotice ?? "The same seed reproduces the random factors; changing the shock changes the price path. Enter a whole number from 0 to 4,294,967,295."}</small>
                 {seedValidation.error && <small id={`${controlId}-seed-error`} className="lab-seed-error" role="alert">{seedValidation.error}</small>}
               </div>
               <input ref={seedInputRef} id={`${controlId}-seed`} type="text" inputMode="numeric" pattern="[0-9]+" required aria-invalid={seedValidation.error ? true : undefined} aria-describedby={`${controlId}-seed-help${seedValidation.error ? ` ${controlId}-seed-error` : ""}`} value={inputs.seed} onChange={(event) => {
@@ -440,6 +456,11 @@ export default function SurvivalLab() {
             <span className="lab-status" role="status"><i /> {running || passportRunning ? "CALCULATING" : results ? "SIMULATION COMPLETE" : "AWAITING EXPERIMENT"}</span>
           </div>
           {dirty && <div className="lab-stale" role="status">Settings changed. You’re viewing the previous run until you run the experiment again.</div>}
+          {worldComparison && <div className={`lab-world-comparison ${worldComparison.recorded === worldComparison.calculated ? "is-match" : "is-mismatch"}`} role="status">
+            <strong>WORLD {worldComparison.seed} / REPLAY {worldComparison.recorded === worldComparison.calculated ? "MATCHED" : "DIFFERED"}</strong>
+            <p>The recorded and rerun fingerprints {worldComparison.recorded === worldComparison.calculated ? "match" : "do not match"}. This is not independent verification or proof of execution.</p>
+            <details><summary>View both fingerprints</summary><dl><div><dt>Recorded</dt><dd><code>{worldComparison.recorded}</code></dd></div><div><dt>Rerun</dt><dd><code>{worldComparison.calculated}</code></dd></div></dl></details>
+          </div>}
 
           {!results ? (
             <div className="lab-empty">
@@ -462,7 +483,7 @@ export default function SurvivalLab() {
               <div className="lab-chart-head"><div><span>EQUITY / SIMULATED USD</span><h4>One market. Different outcomes.</h4></div><span className="lab-chart-timestamp">{cursor + 1} / {shockRun.candles.length} CANDLES</span></div>
               {dirty && <p className="lab-stale lab-chart-stale">Chart and results show the completed {displayedStrategy.label} run: seed {applied.seed}, {applied.shock_pct === 0 ? "no injected shock" : `${applied.shock_pct}% shock`}, {applied.fee_bps} bps fee. Run again to apply the changed controls.</p>}
               <Legend guarded={Boolean(guarded)} />
-              <div className="lab-chart" role="img" aria-label="Simulated equity curves for the baseline, scenario, buy-and-hold, and optional guard. Use the replay slider and the current candle values below to inspect each point.">
+              <div className="lab-chart" role="img" aria-label="Simulated equity curves for the unguarded baseline, scenario, buy-and-hold, and optional guard. Use the replay slider and the current candle values below to inspect each point.">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 15, right: 8, left: 4, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.06} strokeDasharray="3 7" />
@@ -470,7 +491,7 @@ export default function SurvivalLab() {
                     <YAxis domain={chartAxis.domain} ticks={chartAxis.ticks} interval={0} tickFormatter={(value) => axisCurrency.format(value)} stroke="#647d6b" tick={{ fill: "#82958a", fontSize: 10 }} tickLine={false} axisLine={false} width={86} />
                     <Tooltip content={<LabTooltip />} />
                     {cursor >= shockRun.scenario.shock_index && applied.shock_pct > 0 && <ReferenceLine x={shockRun.scenario.shock_index} stroke="#f2ba8c" strokeOpacity={0.7} strokeDasharray="3 5" label={{ value: "SHOCK", fill: "#f2ba8c", fontSize: 9, position: "insideTopRight" }} />}
-                    <Line type="linear" dataKey="baseline" name="Baseline bot" stroke="#c7d7bd" strokeWidth={1.7} dot={false} isAnimationActive={false} />
+                    <Line type="linear" dataKey="baseline" name="Baseline bot · no guard" stroke="#c7d7bd" strokeWidth={1.7} dot={false} isAnimationActive={false} />
                     <Line type="linear" dataKey="shock" name="Scenario bot" stroke="#f28f87" strokeWidth={2} strokeDasharray="8 3" dot={false} isAnimationActive={false} />
                     {guarded && <Line type="linear" dataKey="guarded" name="Scenario + guard" stroke="#c8f37b" strokeWidth={2.5} strokeDasharray="2 4" strokeLinecap="round" dot={false} isAnimationActive={false} />}
                     <Line type="linear" dataKey="benchmark" name="Scenario buy & hold" stroke="#7bded6" strokeWidth={1.6} strokeDasharray="8 3 2 3" dot={false} isAnimationActive={false} />
@@ -490,13 +511,13 @@ export default function SurvivalLab() {
               </div>
               <div className="lab-candle-values" role="group" aria-label={`Simulated equity at replay candle ${cursor + 1}`}>
                 <span>CURRENT CANDLE / {cursor + 1}</span>
-                <dl><div><dt>Baseline bot</dt><dd>{money(chartPoint?.baseline)}</dd></div><div><dt>Scenario bot</dt><dd>{money(chartPoint?.shock)}</dd></div>{guarded && <div><dt>Scenario + guard</dt><dd>{money(chartPoint?.guarded)}</dd></div>}<div><dt>Scenario buy &amp; hold</dt><dd>{money(chartPoint?.benchmark)}</dd></div></dl>
+                <dl><div><dt>Baseline bot · no guard</dt><dd>{money(chartPoint?.baseline)}</dd></div><div><dt>Scenario bot</dt><dd>{money(chartPoint?.shock)}</dd></div>{guarded && <div><dt>Scenario + guard</dt><dd>{money(chartPoint?.guarded)}</dd></div>}<div><dt>Scenario buy &amp; hold</dt><dd>{money(chartPoint?.benchmark)}</dd></div></dl>
               </div>
               <p className="lab-chart-note">Curves reveal as you replay. Buy &amp; hold uses all starting cash; bot buys are capped at {applied.max_position_pct}% of equity at execution, so they are not risk-matched. Drawdown and the guard use candle closes and can miss intrabar losses. The guard pauses new buys and does not guarantee protection.</p>
 
               <div className="lab-metrics-heading">FINAL RESULTS / END OF {dirty ? "PREVIOUS " : ""}RUN <span>Replay candle: {cursor + 1}</span></div>
               <div className="lab-metrics">
-                <ResultMetric label="BASELINE BOT RETURN" value={pct(results.baseline.unguarded.total_return_pct)} sub="Same seed, no injected shock" />
+                <ResultMetric label="BASELINE BOT RETURN" value={pct(results.baseline.unguarded.total_return_pct)} sub="Same seed, no shock or guard" />
                 <ResultMetric label="SCENARIO BOT RETURN" value={pct(shockRun.unguarded.total_return_pct)} sub="Without the drawdown guard" />
                 <ResultMetric label={guarded ? "SCENARIO + GUARD" : "BUY & HOLD RETURN"} value={pct((guarded ?? shockRun.benchmark).total_return_pct)} sub={guarded ? guarded.guard_trigger_index == null ? "Guard did not trigger" : `Guard triggered at candle ${guarded.guard_trigger_index + 1}` : "Same scenario"} tone="is-accent" />
                 <ResultMetric label="BOT MAX CLOSE DRAWDOWN" value={drawdown(shockRun.unguarded.max_drawdown_pct)} sub="Scenario bot · no guard" />

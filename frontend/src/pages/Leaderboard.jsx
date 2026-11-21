@@ -21,10 +21,26 @@ function SharpeBadge({ value }) {
 }
 
 function PnlCell({ value }) {
-  const n = Number(value ?? 0);
-  if (n > 0) return <span className="text-emerald-400 font-mono font-semibold">+{n.toFixed(2)}</span>;
-  if (n < 0) return <span className="text-red-400 font-mono font-semibold">{n.toFixed(2)}</span>;
-  return <span className="text-gray-400 font-mono">0.00</span>;
+  const n = typeof value === "number" ? value : NaN;
+  return <span className="text-gray-300 font-mono">{Number.isFinite(n) ? `${n > 0 ? "+" : ""}${n.toFixed(2)}` : "—"}</span>;
+}
+
+export function RawAggregates({ entries }) {
+  return <details className="mt-6 border-t border-gray-800 pt-4">
+    <summary className="text-sm text-gray-300 cursor-pointer">Show raw PnL and alpha calculations</summary>
+    <p className="text-xs text-gray-400 mt-3">These numbers may combine different market quote units, starting balances, and periods. The API does not specify a shared unit, so they cannot be treated as comparable currency amounts or identify the best performer. Alpha compares with buy-and-hold without matching exposure.</p>
+    <div className="overflow-x-auto mt-3">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-gray-800"><th className="th">Strategy</th><th className="th">Raw average PnL</th><th className="th">Raw average alpha</th><th className="th">Raw maximum PnL</th></tr></thead>
+        <tbody>{entries.map((entry) => <tr key={entry.strategy_key} className="border-b border-gray-800">
+          <td className="td">{STRATEGY_LABELS[entry.strategy_key] ?? entry.strategy_key}</td>
+          <td className="td"><PnlCell value={entry.avg_pnl} /></td>
+          <td className="td"><PnlCell value={entry.avg_alpha} /></td>
+          <td className="td"><PnlCell value={entry.best_pnl} /></td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+  </details>;
 }
 
 export default function Leaderboard() {
@@ -82,6 +98,7 @@ export default function Leaderboard() {
         )}
 
         {!loading && !error && entries.length > 0 && (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -90,9 +107,6 @@ export default function Leaderboard() {
                   <th className="th">Strategy</th>
                   <th className="th">Runs</th>
                   <th className="th">Avg Sharpe</th>
-                  <th className="th">Avg PnL</th>
-                  <th className="th" title="Average alpha vs buy-and-hold">Avg Alpha</th>
-                  <th className="th">Best PnL</th>
                   <th className="th">Avg Win Rate</th>
                 </tr>
               </thead>
@@ -122,9 +136,6 @@ export default function Leaderboard() {
                       </td>
                       <td className="td text-gray-400 font-mono">{entry.total_runs}</td>
                       <td className="td"><SharpeBadge value={entry.avg_sharpe} /></td>
-                      <td className="td"><PnlCell value={entry.avg_pnl} /></td>
-                      <td className="td"><PnlCell value={entry.avg_alpha ?? 0} /></td>
-                      <td className="td"><PnlCell value={entry.best_pnl} /></td>
                       <td className="td">
                         <span className={
                           entry.avg_win_rate >= 0.5
@@ -140,12 +151,14 @@ export default function Leaderboard() {
               </tbody>
             </table>
           </div>
+          <RawAggregates entries={entries} />
+          </>
         )}
       </div>
 
       {!loading && !error && entries.length > 0 && (
         <p className="text-xs text-gray-600 text-center">
-          Sharpe ratio is the primary ranking signal — higher is better. Negative Sharpe means returns don't justify volatility.
+          Rankings are descriptive only; these historical scores are not standardized across runs.
         </p>
       )}
     </div>

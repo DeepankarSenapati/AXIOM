@@ -6,6 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import { buildArenaCsv, buildBacktestCsv, compareMarkets, isIndian, marketUnit, nseFourHourUnsupported, resultMarket, sharedStartingCash } from "../arenaPresentation.js";
 
 // One colour per bot in the arena comparison chart
 const BOT_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#a855f7", "#14b8a6"];
@@ -26,10 +27,6 @@ const INDIAN_SYMBOLS = [
   { value: "HINDUNILVR.NS", label: "HINDUNILVR.NS — Hindustan Unilever" },
 ];
 
-function isIndian(symbol) {
-  return symbol.endsWith(".NS") || symbol.startsWith("^");
-}
-
 function SymbolSelect({ value, onChange }) {
   return (
     <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
@@ -47,25 +44,8 @@ function SymbolSelect({ value, onChange }) {
 // CSV export helpers
 // ---------------------------------------------------------------------------
 
-function exportArenaCSV(summary) {
-  const header = ["Rank", "Bot", "Strategy", "Final PnL", "Buy & Hold", "Alpha", "End Cash", "Trades", "Win Rate", "Sharpe", "Max DD"];
-  const lines = [
-    header.join(","),
-    ...summary.map((r, idx) => [
-      idx + 1,
-      `"${r.name}"`,
-      `"${r.strategy}"`,
-      r.finalPnl.toFixed(2),
-      r.benchmarkPnl.toFixed(2),
-      r.alpha.toFixed(2),
-      r.endCash.toFixed(2),
-      r.trades,
-      r.winRate !== null ? r.winRate + "%" : "—",
-      r.sharpe.toFixed(2),
-      (r.maxDrawdown * 100).toFixed(2) + "%",
-    ].join(",")),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+function exportArenaCSV(summary, comparable) {
+  const blob = new Blob([buildArenaCsv(summary, comparable)], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -75,20 +55,7 @@ function exportArenaCSV(summary) {
 }
 
 function exportBacktestCSV(records) {
-  const header = ["Date", "Action", "Price", "Qty", "PnL", "Cash After", "Reason"];
-  const lines = [
-    header.join(","),
-    ...records.map((r) => [
-      `"${new Date(r.timestamp).toLocaleString()}"`,
-      r.action_type,
-      Number(r.price ?? 0).toFixed(2),
-      Number(r.quantity ?? 0).toFixed(4),
-      Number(r.pnl ?? 0).toFixed(2),
-      Number(r.cash_after ?? 0).toFixed(2),
-      `"${(r.reason ?? "").replace(/"/g, "'")}"`,
-    ].join(",")),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const blob = new Blob([buildBacktestCsv(records)], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -125,16 +92,18 @@ function Spinner() {
 // Single-bot equity area chart
 // ---------------------------------------------------------------------------
 
-function EquityCurve({ records, startCash }) {
+function EquityCurve({ records, startCash, symbol }) {
   if (!records || records.length === 0) return null;
-  const cash = Number(startCash) || 10000;
+  const cash = Number(startCash);
+  if (!Number.isFinite(cash)) return null;
+  const unit = marketUnit(symbol);
 
   const data = records.map((r, i) => ({
     tick: i + 1,
     equity: parseFloat((cash + Number(r.pnl ?? 0)).toFixed(2)),
     pnl: parseFloat(Number(r.pnl ?? 0).toFixed(2)),
     action: r.action_type,
-    time: new Date(r.timestamp).toLocaleTimeString(),
+    time: new Date(r.timestamp).toLocaleString(),
   }));
 
   const min = Math.min(...data.map((d) => d.equity));
@@ -149,8 +118,8 @@ function EquityCurve({ records, startCash }) {
     return (
       <div className="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs space-y-1">
         <p className="text-gray-400">Tick {d.tick} · {d.time}</p>
-        <p className="text-gray-100">Equity: <span className="font-mono font-semibold">${d.equity.toFixed(2)}</span></p>
-        <p className={d.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>PnL: {d.pnl >= 0 ? "+" : ""}{d.pnl.toFixed(2)}</p>
+        <p className="text-gray-100">Equity: <span className="font-mono font-semibold">{d.equity.toFixed(2)} {unit}</span></p>
+        <p className={d.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>PnL: {d.pnl >= 0 ? "+" : ""}{d.pnl.toFixed(2)} {unit}</p>
         <p className="text-gray-500">
           Action:{" "}
           <span className={d.action === "BUY" ? "text-emerald-400" : d.action === "SELL" ? "text-red-400" : "text-yellow-400"}>
@@ -164,7 +133,7 @@ function EquityCurve({ records, startCash }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-gray-300">Equity Curve</h4>
+        <h4 className="text-sm font-medium text-gray-300">Equity Curve · {unit}</h4>
         <span className={`text-sm font-mono font-semibold ${isProfit ? "text-emerald-400" : "text-red-400"}`}>
           {isProfit ? "+" : ""}{finalPnl.toFixed(2)} PnL
         </span>
@@ -180,7 +149,7 @@ function EquityCurve({ records, startCash }) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
             <XAxis dataKey="tick" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#374151" }} />
-            <YAxis domain={[min * 0.999, max * 1.001]} tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} width={62} />
+            <YAxis domain={[min * 0.999, max * 1.001]} tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} tickFormatter={(v) => v.toFixed(0)} width={62} />
             <Tooltip content={<CustomTooltip />} />
             <ReferenceLine y={cash} stroke="#4b5563" strokeDasharray="4 2" />
             <Area type="monotone" dataKey="equity" stroke={color} strokeWidth={2} fill="url(#eg)" dot={false} activeDot={{ r: 4, fill: color, stroke: "#111827" }} />
@@ -195,10 +164,14 @@ function EquityCurve({ records, startCash }) {
 // Multi-bot comparison: overlaid equity curves + summary table
 // ---------------------------------------------------------------------------
 
-function ArenaComparison({ results, bots, startCash }) {
+export function ArenaComparison({ results, bots, submittedSymbols }) {
   const entries = Object.entries(results);
   if (entries.length === 0) return null;
-  const cash = Number(startCash) || 10000;
+  const cash = sharedStartingCash(results);
+  const markets = Object.fromEntries(entries.map(([botId, result]) => [
+    botId, resultMarket(result, submittedSymbols?.[botId]),
+  ]));
+  const { comparable, sharedUnit, mixedMarkets } = compareMarkets(Object.values(markets));
 
   // Align full per-candle curves by actual timestamp, never by trade index.
   const byTime = new Map();
@@ -207,7 +180,8 @@ function ArenaComparison({ results, bots, startCash }) {
       const timestamp = new Date(record.timestamp).getTime();
       if (!Number.isFinite(timestamp)) return;
       const row = byTime.get(timestamp) ?? { timestamp };
-      row[botId] = parseFloat((Number(res.start_cash ?? cash) + Number(record.pnl ?? 0)).toFixed(2));
+      if (typeof res.start_cash !== "number" || !Number.isFinite(res.start_cash)) return;
+      row[botId] = parseFloat((res.start_cash + Number(record.pnl ?? 0)).toFixed(2));
       byTime.set(timestamp, row);
     });
   });
@@ -220,7 +194,7 @@ function ArenaComparison({ results, bots, startCash }) {
         <p className="text-gray-400 mb-1">{new Date(Number(label)).toLocaleString()}</p>
         {payload.map((p) => (
           <p key={p.dataKey} style={{ color: p.color }}>
-            {p.name}: <span className="font-mono">${Number(p.value).toFixed(2)}</span>
+            {p.name}: <span className="font-mono">{Number(p.value).toFixed(2)} {sharedUnit}</span>
           </p>
         ))}
       </div>
@@ -236,6 +210,8 @@ function ArenaComparison({ results, bots, startCash }) {
       botId,
       name: bot?.name ?? botId.slice(0, 8),
       strategy: bot?.strategy_name ?? "—",
+      symbol: markets[botId],
+      unit: marketUnit(markets[botId]),
       finalPnl: Number(res.final_pnl ?? 0),
       trades: res.total_trades,
       startCash: res.start_cash,
@@ -247,53 +223,52 @@ function ArenaComparison({ results, bots, startCash }) {
       alpha: Number(res.alpha ?? 0),
       color: BOT_COLORS[idx % BOT_COLORS.length],
     };
-  }).sort((a, b) => b.finalPnl - a.finalPnl);
+  });
+  if (comparable) summary.sort((a, b) => b.finalPnl - a.finalPnl);
 
   return (
     <div className="space-y-6 pt-2 border-t border-gray-800">
       {/* Comparison chart */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-300">Equity Curve Comparison</h3>
+      {comparable ? <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-300">Equity Curve Comparison · {sharedUnit}</h3>
+        <p className="text-xs text-gray-400">{mixedMarkets ? "These runs use different markets and may cover different dates. " : ""}Strategy exposure may differ; results are not risk-matched. No currency conversion is applied.</p>
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={merged} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
               <XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value) => new Date(value).toLocaleDateString()} tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#374151" }} />
-              <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} width={62} />
+              <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} tickFormatter={(v) => v.toFixed(0)} width={62} />
               <Tooltip content={<ComparisonTooltip />} />
               <Legend
-                formatter={(value) => {
-                  const bot = bots.find((b) => b.id === value);
-                  return <span className="text-xs text-gray-300">{bot?.name ?? value.slice(0, 8)}</span>;
-                }}
+                formatter={(value) => <span className="text-xs text-gray-300">{value}</span>}
                 wrapperStyle={{ paddingTop: 8 }}
               />
-              <ReferenceLine y={cash} stroke="#4b5563" strokeDasharray="4 2" label={{ value: "Start", fill: "#6b7280", fontSize: 10 }} />
+              {cash !== null && <ReferenceLine y={cash} stroke="#4b5563" strokeDasharray="4 2" label={{ value: "Start", fill: "#6b7280", fontSize: 10 }} />}
               {entries.map(([botId], idx) => (
                 <Line
                   key={botId}
                   type="monotone"
                   dataKey={botId}
-                  name={bots.find((b) => b.id === botId)?.name ?? botId.slice(0, 8)}
+                  name={`${bots.find((b) => b.id === botId)?.name ?? botId.slice(0, 8)} · ${markets[botId]}`}
                   stroke={BOT_COLORS[idx % BOT_COLORS.length]}
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
-                  connectNulls
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div> : <p className="text-sm text-amber-300" role="note">These markets use different or unknown units. A shared equity chart and PnL ranking are not shown; no currency conversion is applied.</p>}
 
       {/* Summary comparison table */}
       <div className="space-y-2">
+        <p className="text-xs text-gray-400">Buy &amp; hold uses all starting cash; bot exposure can differ. The benchmark is not risk-matched and legacy fills exclude fees and slippage.</p>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-300">Results Summary</h3>
           <button
             type="button"
-            onClick={() => exportArenaCSV(summary)}
+            onClick={() => exportArenaCSV(summary, comparable)}
             className="px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 transition-colors"
           >
             Export CSV
@@ -306,6 +281,8 @@ function ArenaComparison({ results, bots, startCash }) {
                 <th className="th">Rank</th>
                 <th className="th">Bot</th>
                 <th className="th">Strategy</th>
+                <th className="th">Market</th>
+                <th className="th">Simulated Unit</th>
                 <th className="th">Final PnL</th>
                 <th className="th" title="Buy-and-hold baseline for same period">Buy &amp; Hold</th>
                 <th className="th" title="Bot PnL minus buy-and-hold">Alpha</th>
@@ -320,17 +297,19 @@ function ArenaComparison({ results, bots, startCash }) {
               {summary.map((s, rank) => (
                 <tr key={s.botId} className="border-b border-gray-800 hover:bg-gray-800/50">
                   <td className="td">
-                    <span className="font-bold" style={{ color: s.color }}>#{rank + 1}</span>
+                    {comparable ? <span className="font-bold" style={{ color: s.color }}>#{rank + 1}</span> : <span className="text-gray-600">—</span>}
                   </td>
                   <td className="td font-medium text-gray-100">
                     <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: s.color }} />
                     {s.name}
                   </td>
                   <td className="td"><span className="badge badge-blue">{s.strategy}</span></td>
+                  <td className="td font-mono">{s.symbol}</td>
+                  <td className="td">{s.unit}</td>
                   <td className="td"><PnlBadge value={s.finalPnl} /></td>
                   <td className="td"><PnlBadge value={s.benchmarkPnl} /></td>
                   <td className="td"><PnlBadge value={s.alpha} /></td>
-                  <td className="td font-mono">${Number(s.endCash ?? 0).toFixed(2)}</td>
+                  <td className="td font-mono">{Number(s.endCash ?? 0).toFixed(2)}</td>
                   <td className="td">{s.trades}</td>
                   <td className="td">
                     {s.winRate !== null
@@ -399,7 +378,7 @@ function TradeTable({ records, showExportCSV = false }) {
               <th className="th">Cash After</th>
               <th className="th">PnL</th>
               <th className="th">Reason</th>
-              <th className="th">Time</th>
+              <th className="th">Date / Time</th>
             </tr>
           </thead>
           <tbody>
@@ -416,7 +395,7 @@ function TradeTable({ records, showExportCSV = false }) {
                 <td className="td">{Number(r.cash_after ?? 0).toFixed(2)}</td>
                 <td className="td"><PnlBadge value={Number(r.pnl ?? 0)} /></td>
                 <td className="td text-gray-500 text-xs max-w-xs truncate">{r.reason}</td>
-                <td className="td text-gray-500 text-xs">{new Date(r.timestamp).toLocaleTimeString()}</td>
+                <td className="td text-gray-500 text-xs">{new Date(r.timestamp).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -475,6 +454,7 @@ function BotArenaPage() {
   const [btDataSource, setBtDataSource] = useState("mock");
   const [btTimeframe, setBtTimeframe] = useState("1d");
   const [btResult, setBtResult] = useState(null);
+  const [btCompleted, setBtCompleted] = useState(null);
   const [btLoading, setBtLoading] = useState(false);
   const [btError, setBtError] = useState(null);
 
@@ -486,6 +466,7 @@ function BotArenaPage() {
   const [arenaDataSource, setArenaDataSource] = useState("mock");
   const [arenaTimeframe, setArenaTimeframe] = useState("1d");
   const [arenaResult, setArenaResult] = useState(null);
+  const [arenaCompleted, setArenaCompleted] = useState(null);
   const [arenaLoading, setArenaLoading] = useState(false);
   const [arenaError, setArenaError] = useState(null);
 
@@ -505,22 +486,24 @@ function BotArenaPage() {
 
   async function handleBacktest(e) {
     e.preventDefault();
+    if (nseFourHourUnsupported(btDataSource, btTimeframe, [btSymbol])) {
+      setBtError("NSE historical data does not support 4-hour candles. Choose 1 hour or 1 day.");
+      return;
+    }
     setBtLoading(true); setBtError(null); setBtResult(null);
+    const submitted = {
+      symbol: btSymbol, num_candles: safeNum(btCandles, 100), start_price: safeNum(btStartPrice, 50000),
+      starting_cash: safeNum(btCash, 10000), data_source: btDataSource, timeframe: btTimeframe,
+    };
     try {
       const res = await fetch(`/arena/backtest/${btBotId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          symbol: btSymbol,
-          num_candles: safeNum(btCandles, 100),
-          start_price: safeNum(btStartPrice, 50000),
-          starting_cash: safeNum(btCash, 10000),
-          data_source: btDataSource,
-          timeframe: btTimeframe,
-        }),
+        body: JSON.stringify(submitted),
       });
       const data = await res.json();
       if (!res.ok) { setBtError(JSON.stringify(data.detail || data)); return; }
+      setBtCompleted(submitted);
       setBtResult(data);
     } catch (e) {
       setBtError(e.message || "Network error");
@@ -556,29 +539,32 @@ function BotArenaPage() {
   async function handleArena(e) {
     e.preventDefault();
     if (arenaSelectedIds.length === 0) return;
+    const activeSymbols = arenaSelectedIds.map((id) => botSymbols[id] || arenaSymbol);
+    if (nseFourHourUnsupported(arenaDataSource, arenaTimeframe, activeSymbols)) {
+      setArenaError("NSE historical data does not support 4-hour candles. Choose 1 hour or 1 day.");
+      return;
+    }
     setArenaLoading(true); setArenaError(null); setArenaResult(null);
     // Only include overrides that are non-empty
     const activeOverrides = {};
     Object.entries(botSymbols).forEach(([id, sym]) => {
       if (sym && arenaSelectedIds.includes(id)) activeOverrides[id] = sym;
     });
+    const submitted = {
+      bot_ids: arenaSelectedIds, symbol: arenaSymbol, num_candles: safeNum(arenaCandles, 100),
+      start_price: safeNum(arenaStartPrice, 50000), starting_cash: safeNum(arenaCash, 10000),
+      data_source: arenaDataSource, timeframe: arenaTimeframe,
+      ...(Object.keys(activeOverrides).length > 0 ? { bot_symbols: activeOverrides } : {}),
+    };
     try {
       const res = await fetch("/arena/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bot_ids: arenaSelectedIds,
-          symbol: arenaSymbol,
-          num_candles: safeNum(arenaCandles, 100),
-          start_price: safeNum(arenaStartPrice, 50000),
-          starting_cash: safeNum(arenaCash, 10000),
-          data_source: arenaDataSource,
-          timeframe: arenaTimeframe,
-          ...(Object.keys(activeOverrides).length > 0 ? { bot_symbols: activeOverrides } : {}),
-        }),
+        body: JSON.stringify(submitted),
       });
       const data = await res.json();
       if (!res.ok) { setArenaError(JSON.stringify(data.detail || data)); return; }
+      setArenaCompleted(submitted);
       setArenaResult(data);
       setTimeout(() => arenaResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (e) {
@@ -590,6 +576,16 @@ function BotArenaPage() {
 
   const noBots = !botsLoading && bots.length === 0;
   const selectedBots = bots.filter((b) => arenaSelectedIds.includes(b.id));
+  const selectedSymbols = selectedBots.map((bot) => botSymbols[bot.id] || arenaSymbol);
+  const arenaHasNse = (selectedSymbols.length ? selectedSymbols : [arenaSymbol]).some(isIndian);
+  const btNseFourHour = nseFourHourUnsupported(btDataSource, btTimeframe, [btSymbol]);
+  const arenaNseFourHour = nseFourHourUnsupported(arenaDataSource, arenaTimeframe, selectedSymbols);
+  const completedBtSymbol = btResult ? resultMarket(btResult, btCompleted?.symbol) : null;
+  const completedBtBot = btResult ? (bots.find((bot) => bot.id === btResult.bot_id)?.name ?? btResult.bot_id) : null;
+  const completedBtSource = btCompleted?.data_source === "live" ? "historical data" : btCompleted?.data_source === "mock" ? "mock data" : "unknown source";
+  const completedArenaSymbols = arenaCompleted ? Object.fromEntries(arenaCompleted.bot_ids.map((id) => [
+    id, arenaCompleted.bot_symbols?.[id] || arenaCompleted.symbol,
+  ])) : {};
 
   return (
     <div className="p-6 space-y-8">
@@ -622,35 +618,35 @@ function BotArenaPage() {
                 }} />
               </div>
               <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={btCandles} onChange={(e) => setBtCandles(e.target.value)} /></div>
-              <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={btStartPrice} onChange={(e) => setBtStartPrice(e.target.value)} disabled={btDataSource === "live"} /></div>
-              <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={btCash} onChange={(e) => setBtCash(e.target.value)} /></div>
+              <div><label className="label">Start Price ({marketUnit(btSymbol)})</label><input className="input" type="number" min="1" value={btStartPrice} onChange={(e) => setBtStartPrice(e.target.value)} disabled={btDataSource === "live"} /></div>
+              <div><label className="label">Starting Cash ({marketUnit(btSymbol)})</label><input className="input" type="number" min="100" value={btCash} onChange={(e) => setBtCash(e.target.value)} /></div>
               <div>
                 <label className="label">Data Source</label>
                 <select className="input" value={btDataSource} onChange={(e) => setBtDataSource(e.target.value)} disabled={isIndian(btSymbol)}>
                   <option value="mock">Mock (simulated)</option>
-                  <option value="live">Live</option>
+                  <option value="live">Historical (network)</option>
                 </select>
               </div>
-              {btDataSource === "live" && (
-                <div>
-                  <label className="label">Timeframe</label>
-                  <select className="input" value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value)}>
-                    <option value="1h">1 Hour</option>
-                    <option value="4h">4 Hours</option>
-                    <option value="1d">1 Day</option>
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className="label">Timeframe</label>
+                <select className="input" value={btTimeframe} onChange={(e) => setBtTimeframe(e.target.value)}>
+                  <option value="1h">1 Hour</option>
+                  <option value="4h" disabled={btDataSource === "live" && isIndian(btSymbol)}>4 Hours</option>
+                  <option value="1d">1 Day</option>
+                </select>
+              </div>
             </div>
             {btDataSource === "live" && (
               <p className="text-xs text-indigo-400">
                 {isIndian(btSymbol)
-                  ? `Using real ${btSymbol} data from NSE via yfinance`
-                  : `Using real ${btSymbol} data from Binance`}
+                  ? `Using historical ${btSymbol} data from Yahoo Finance via yfinance`
+                  : `Using historical ${btSymbol} data from Binance`}
               </p>
             )}
+            {btNseFourHour && <p className="text-xs text-amber-300" role="alert">NSE historical data does not support 4-hour candles. Choose 1 hour or 1 day.</p>}
+            <p className="text-xs text-gray-400">Amounts are simulated in the market's quote units; no currency conversion is applied. Index points are treated as synthetic units, not a tradable instrument.</p>
             <div className="flex items-center gap-3">
-              <button type="submit" className="btn-primary" disabled={btLoading}>{btLoading ? "Running…" : "Run Backtest"}</button>
+              <button type="submit" className="btn-primary" disabled={btLoading || btNseFourHour}>{btLoading ? "Running…" : "Run Backtest"}</button>
             </div>
           </form>
         )}
@@ -658,11 +654,13 @@ function BotArenaPage() {
         {btLoading && <Spinner />}
         {btResult && (
           <div className="space-y-4 pt-2 border-t border-gray-800">
+            <p className="text-xs text-gray-400">Completed: {completedBtBot} · {completedBtSymbol} · {marketUnit(completedBtSymbol)} · {completedBtSource} · {btCompleted?.timeframe} · {btResult.equity_records?.length ?? 0} candles. Values are simulated; no currency conversion.</p>
+            <p className="text-xs text-gray-400">Buy &amp; hold uses all starting cash; bot exposure may differ. The benchmark is not risk-matched and legacy fills exclude fees and slippage.</p>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
               {[
                 { label: "Total Trades", value: btResult.total_trades },
-                { label: "Start Cash", value: `$${Number(btResult.start_cash ?? 0).toFixed(2)}` },
-                { label: "End Cash", value: `$${Number(btResult.end_cash ?? 0).toFixed(2)}` },
+                { label: "Start Cash", value: Number(btResult.start_cash ?? 0).toFixed(2) },
+                { label: "End Cash", value: Number(btResult.end_cash ?? 0).toFixed(2) },
                 { label: "Final PnL", value: <PnlBadge value={Number(btResult.final_pnl ?? 0)} /> },
                 { label: "Buy & Hold", value: <PnlBadge value={Number(btResult.benchmark_pnl ?? 0)} />, hint: "buy-and-hold baseline" },
                 { label: "Alpha", value: <PnlBadge value={Number(btResult.alpha ?? 0)} />, hint: "bot PnL minus benchmark" },
@@ -675,7 +673,7 @@ function BotArenaPage() {
                 </div>
               ))}
             </div>
-            <EquityCurve records={btResult.equity_records} startCash={Number(btResult.start_cash) || 10000} />
+            <EquityCurve records={btResult.equity_records} startCash={btResult.start_cash} symbol={completedBtSymbol} />
             <TradeTable records={btResult.trade_records} showExportCSV={true} />
           </div>
         )}
@@ -742,34 +740,32 @@ function BotArenaPage() {
                 }} />
               </div>
               <div><label className="label">Candles</label><input className="input" type="number" min="10" max="1000" value={arenaCandles} onChange={(e) => setArenaCandles(e.target.value)} /></div>
-              <div><label className="label">Start Price ($)</label><input className="input" type="number" min="1" value={arenaStartPrice} onChange={(e) => setArenaStartPrice(e.target.value)} disabled={arenaDataSource === "live"} /></div>
-              <div><label className="label">Starting Cash ($)</label><input className="input" type="number" min="100" value={arenaCash} onChange={(e) => setArenaCash(e.target.value)} /></div>
+              <div><label className="label">Start Price (per market unit)</label><input className="input" type="number" min="1" value={arenaStartPrice} onChange={(e) => setArenaStartPrice(e.target.value)} disabled={arenaDataSource === "live"} /></div>
+              <div><label className="label">Starting Cash (per market unit)</label><input className="input" type="number" min="100" value={arenaCash} onChange={(e) => setArenaCash(e.target.value)} /></div>
               <div>
                 <label className="label">Data Source</label>
                 <select className="input" value={arenaDataSource} onChange={(e) => setArenaDataSource(e.target.value)} disabled={isIndian(arenaSymbol)}>
                   <option value="mock">Mock (simulated)</option>
-                  <option value="live">Live</option>
+                  <option value="live">Historical (network)</option>
                 </select>
               </div>
-              {arenaDataSource === "live" && (
-                <div>
-                  <label className="label">Timeframe</label>
-                  <select className="input" value={arenaTimeframe} onChange={(e) => setArenaTimeframe(e.target.value)}>
-                    <option value="1h">1 Hour</option>
-                    <option value="4h">4 Hours</option>
-                    <option value="1d">1 Day</option>
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className="label">Timeframe</label>
+                <select className="input" value={arenaTimeframe} onChange={(e) => setArenaTimeframe(e.target.value)}>
+                  <option value="1h">1 Hour</option>
+                  <option value="4h" disabled={arenaDataSource === "live" && arenaHasNse}>4 Hours</option>
+                  <option value="1d">1 Day</option>
+                </select>
+              </div>
             </div>
             {arenaDataSource === "live" && (
               <p className="text-xs text-indigo-400">
-                {isIndian(arenaSymbol)
-                  ? `Using real ${arenaSymbol} data from NSE via yfinance`
-                  : `Using real ${arenaSymbol} data from Binance`}
+                Historical data is fetched for each selected market from Yahoo Finance via yfinance or from Binance.
               </p>
             )}
-            <button type="submit" className="btn-primary" disabled={arenaLoading || arenaSelectedIds.length === 0}>
+            {arenaNseFourHour && <p className="text-xs text-amber-300" role="alert">At least one selected NSE market does not support 4-hour historical candles. Choose 1 hour or 1 day.</p>}
+            <p className="text-xs text-gray-400">Each bot uses the same numerical starting cash in its own market units, with no currency conversion. Index levels are treated as synthetic point units, not tradable instruments.</p>
+            <button type="submit" className="btn-primary" disabled={arenaLoading || arenaSelectedIds.length === 0 || arenaNseFourHour}>
               {arenaLoading ? "Running Arena…" : `Run Arena (${arenaSelectedIds.length} bot${arenaSelectedIds.length !== 1 ? "s" : ""})`}
             </button>
           </form>
@@ -779,17 +775,18 @@ function BotArenaPage() {
         {arenaResult && (
           <>
             <div ref={arenaResultsRef} />
-            <ArenaComparison results={arenaResult.results} bots={bots} startCash={Number(arenaCash) || 10000} />
+            <ArenaComparison results={arenaResult.results} bots={bots} submittedSymbols={completedArenaSymbols} />
             {/* Individual trade logs, collapsible per bot */}
             <div className="space-y-4 pt-2 border-t border-gray-800">
               <h3 className="text-sm font-semibold text-gray-300">Individual Trade Logs</h3>
               {Object.entries(arenaResult.results).map(([botId, res], idx) => {
                 const bot = bots.find((b) => b.id === botId);
+                const market = resultMarket(res, completedArenaSymbols[botId]);
                 return (
                   <details key={botId} className="bg-gray-800/50 rounded-lg">
                     <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-gray-300 flex items-center gap-2 select-none">
                       <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: BOT_COLORS[idx % BOT_COLORS.length] }} />
-                      {bot?.name ?? botId.slice(0, 8)}
+                      {bot?.name ?? botId.slice(0, 8)} · {market} · {marketUnit(market)}
                       <span className="ml-auto"><PnlBadge value={res.final_pnl ?? 0} /></span>
                     </summary>
                     <div className="px-4 pb-4 pt-2">

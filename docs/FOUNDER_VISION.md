@@ -115,6 +115,17 @@ and independent review. Do not present invented users, revenue, market size,
 or performance. Keep a pre-run local demo and the briefing available if the
 room's network fails.
 
+### Questions to rehearse
+
+| An investor may ask | A defensible answer today |
+|---|---|
+| How is this different from existing backtesting tools? | Those tools are substantially more complete. Our hypothesis is that a focused challenge-and-review workflow can make failures easier to explain across existing tools; we still need to test that with users. |
+| Does the guard protect investors? | No protection is established. It only pauses simulated buys at a close and can miss intrabar losses; in these examples it can also worsen the final outcome. |
+| Where is the AI? | The bots in this prototype follow explicit rules. Agent-assisted reviewers are a future experiment, not a feature or proof of reliability. |
+| Can it trade or earn revenue? | This is a local simulation with no real orders or money. The older revenue and token screens model user-entered examples. |
+| Who pays, and what is the moat? | A research team and its review lead are an initial customer hypothesis. We have not validated pricing or a moat; interviews and pilots come first. |
+| What are you asking for? | Introductions to strategy researchers and review leads, plus support for a scoped validation phase. Bring a real budget before asking for a specific funding amount. |
+
 ## A 90-day validation plan
 
 These are proposed targets, not results or statistically representative proof.

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -16,6 +16,22 @@ function SortIcon({ dir }) {
   return <span className="ml-1 text-indigo-400 text-xs">{dir === "asc" ? "↑" : "↓"}</span>;
 }
 
+function winRatePercent(value) {
+  if (value == null) return null;
+  const rate = Number(value);
+  return Number.isFinite(rate) ? rate * 100 : null;
+}
+
+function dataSourceLabel(source) {
+  if (source === "live") return "Historical data";
+  if (source === "mock") return "Mock (simulated)";
+  return source ?? "—";
+}
+
+function cashValue(value) {
+  return value == null ? "—" : String(value);
+}
+
 const ALL_STRATEGIES = [
   { value: "", label: "All Strategies" },
   { value: "simple_ma", label: "Moving Average" },
@@ -28,7 +44,7 @@ const ALL_STRATEGIES = [
 const DATA_SOURCES = [
   { value: "", label: "All Sources" },
   { value: "mock", label: "Mock (simulated)" },
-  { value: "live", label: "Live" },
+  { value: "live", label: "Historical data" },
 ];
 
 const COLUMNS = [
@@ -70,19 +86,20 @@ function sortRows(rows, key, dir) {
 // ---------------------------------------------------------------------------
 
 function DetailPanel({ row }) {
+  const winRate = winRatePercent(row.win_rate);
   const fields = [
     ["Bot ID", row.bot_id],
     ["Bot Name", row.bot_name ?? "—"],
     ["Strategy", row.strategy_key ?? "—"],
     ["Symbol", row.symbol ?? "—"],
-    ["Data Source", row.data_source ?? "—"],
+    ["Data Source", dataSourceLabel(row.data_source)],
     ["Timeframe", row.timeframe ?? "—"],
     ["Candles", row.num_candles ?? "—"],
-    ["Start Cash", row.start_cash != null ? `$${Number(row.start_cash).toFixed(2)}` : "—"],
-    ["End Cash", row.end_cash != null ? `$${Number(row.end_cash).toFixed(2)}` : "—"],
+    ["Start Cash", cashValue(row.starting_cash)],
+    ["End Cash", cashValue(row.end_cash)],
     ["Final PnL", row.final_pnl != null ? Number(row.final_pnl).toFixed(2) : "—"],
     ["Total Trades", row.total_trades ?? "—"],
-    ["Win Rate", row.win_rate != null ? `${Number(row.win_rate).toFixed(1)}%` : "—"],
+    ["Win Rate", winRate !== null ? `${winRate.toFixed(1)}%` : "—"],
     ["Sharpe Ratio", row.sharpe_ratio != null ? Number(row.sharpe_ratio).toFixed(3) : "—"],
     ["Max Drawdown", row.max_drawdown != null ? `${(Number(row.max_drawdown) * 100).toFixed(2)}%` : "—"],
     ["Run Date", row.created_at ? new Date(row.created_at).toLocaleString() : "—"],
@@ -169,6 +186,7 @@ export default function History() {
         <p className="page-kicker">Research archive</p>
         <h1>Backtest History</h1>
         <p className="page-subtitle">Review and explore your previous simulation runs.</p>
+        <p className="page-subtitle">Cash and PnL values use each market's simulated quote units; no currency conversion is performed.</p>
       </div></div>
 
       {/* Filter bar */}
@@ -291,14 +309,13 @@ export default function History() {
                   const rowId = row.id ?? row.run_id ?? JSON.stringify(row);
                   const isExpanded = expandedId === rowId;
                   const pnl = Number(row.final_pnl ?? 0);
-                  const wr = row.win_rate != null ? Number(row.win_rate) : null;
+                  const wr = winRatePercent(row.win_rate);
                   const sharpe = Number(row.sharpe_ratio ?? 0);
                   const dd = Number(row.max_drawdown ?? 0);
 
                   return (
-                    <>
+                    <Fragment key={rowId}>
                       <tr
-                        key={rowId}
                         className={`border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer transition-colors ${isExpanded ? "bg-gray-800/70" : ""}`}
                         onClick={() => toggleExpand(rowId)}
                       >
@@ -321,9 +338,9 @@ export default function History() {
                         <td className="td font-mono text-gray-300">{row.symbol ?? "—"}</td>
                         {/* Data Source */}
                         <td className="td">
-                          {row.data_source === "live"
-                            ? <span className="badge badge-green">live</span>
-                            : <span className="badge badge-yellow">mock</span>}
+                          <span className={`badge ${row.data_source === "live" ? "badge-green" : row.data_source === "mock" ? "badge-yellow" : "bg-gray-700 text-gray-400"}`}>
+                            {dataSourceLabel(row.data_source)}
+                          </span>
                         </td>
                         {/* Candles */}
                         <td className="td text-gray-400">{row.num_candles ?? "—"}</td>
@@ -331,7 +348,7 @@ export default function History() {
                         <td className="td"><PnlCell value={row.final_pnl} /></td>
                         {/* End Cash */}
                         <td className="td font-mono text-gray-300">
-                          {row.end_cash != null ? `$${Number(row.end_cash).toFixed(2)}` : "—"}
+                          {cashValue(row.end_cash)}
                         </td>
                         {/* Trades */}
                         <td className="td text-gray-400">{row.total_trades ?? "—"}</td>
@@ -361,7 +378,7 @@ export default function History() {
                         </td>
                       </tr>
                       {isExpanded && <DetailPanel key={`${rowId}-detail`} row={row} />}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

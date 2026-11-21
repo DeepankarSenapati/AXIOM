@@ -17,7 +17,7 @@ ENGINE_VERSION = "survival-lab-v4"
 
 def _assumptions(request: SurvivalRequest, signal_cash_fraction: float) -> list[str]:
     shock = (
-        f"A single hypothetical {request.shock_pct:g}% downward gap is applied at bar {resolved_shock_index(request)}."
+        f"A single hypothetical {request.shock_pct:g}% downward gap is applied at candle {resolved_shock_index(request) + 1}."
         if request.shock_pct > 0 else "No synthetic shock is applied."
     )
     return [
@@ -25,7 +25,7 @@ def _assumptions(request: SurvivalRequest, signal_cash_fraction: float) -> list[
         shock,
         "The strategy receives only current and prior candles, decides at the close, and may fill at the next open.",
         f"Built-in buy signals request {signal_cash_fraction * 100:g}% of available cash at the signal close; this is separate from the position cap applied at execution.",
-        "A signal at the final close expires; open positions are marked at the last close without liquidation or estimated exit costs.",
+        "An unblocked BUY or SELL signaled at the final close expires without a fill; open positions are marked at the last close without liquidation or estimated exit costs.",
         f"Long-only, no leverage; buys are capped at {request.max_position_pct:g}% of post-cost equity at execution.",
         f"Each fill uses {request.fee_bps:g} bps commission and {request.slippage_bps:g} bps adverse slippage.",
         "Fills assume unlimited available liquidity; taxes, market impact, dividends, intrabar movement and other costs are excluded.",

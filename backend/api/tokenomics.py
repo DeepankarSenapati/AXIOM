@@ -113,6 +113,8 @@ def purchase_tokens(
         raise HTTPException(status_code=422, detail="amount must be positive")
 
     bot = _get_active_bot(payload.bot_id, db)
+    if not bot.is_active:
+        raise HTTPException(status_code=422, detail="Purchases are unavailable for a deactivated bot.")
     cost = round(payload.amount * RST_PRICE, 2)
 
     if current_user.wallet_balance < cost:
@@ -204,7 +206,7 @@ def my_holdings(
     """Return all RST token holdings for the current user."""
     rows = (
         db.query(DBToken)
-        .filter(DBToken.holder_address == current_user.email)
+        .filter(DBToken.holder_address == current_user.email, DBToken.balance > 0)
         .all()
     )
 

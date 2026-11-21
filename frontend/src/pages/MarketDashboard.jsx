@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../auth.js";
+import { marketUnit } from "../arenaPresentation.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -21,11 +22,11 @@ const STRATEGY_LABELS = {
 };
 
 const STRATEGY_DESCRIPTIONS = {
-  simple_ma:       "Buys when a short moving average crosses above a long moving average. Sells on the reverse cross. Works best in trending markets.",
-  rsi:             "Buys when RSI drops below the oversold threshold (undervalued signal). Sells when RSI rises above the overbought threshold.",
+  simple_ma:       "Buys when a short moving average crosses above a long moving average. Sells on the reverse cross.",
+  rsi:             "Buys when RSI drops below the oversold threshold. Sells when RSI rises above the overbought threshold.",
   bollinger_bands: "Buys when price touches the lower Bollinger Band (mean-reversion signal). Sells when price touches the upper band.",
   macd:            "Buys when the MACD line crosses above the signal line. Sells on the reverse. A momentum and trend-following strategy.",
-  momentum:        "Buys when recent price momentum exceeds a threshold. Sells when momentum reverses or a stop-loss is hit.",
+  momentum:        "Buys when recent price momentum exceeds a threshold. Sells when its stop-loss condition is met.",
 };
 
 function fmtMoney(n) {
@@ -70,11 +71,78 @@ function RiskBadge({ rating }) {
   );
 }
 
-function PnlText({ value }) {
-  const n = Number(value ?? 0);
-  if (n > 0) return <span className="text-emerald-400 font-mono font-semibold">+${fmtMoney(n)}</span>;
-  if (n < 0) return <span className="text-red-400 font-mono font-semibold">-${fmtMoney(Math.abs(n))}</span>;
-  return <span className="text-gray-400 font-mono">$0.00</span>;
+function PnlText({ value, symbol }) {
+  const n = value == null ? NaN : Number(value);
+  if (!Number.isFinite(n)) return <span className="text-gray-400">—</span>;
+  const color = n > 0 ? "text-emerald-400" : n < 0 ? "text-red-400" : "text-gray-400";
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  return <span className={`${color} font-mono font-semibold`}>{sign}{fmtMoney(Math.abs(n))} {marketUnit(symbol)}</span>;
+}
+
+export function ProfilePerformance({ profile }) {
+  return <>
+    <div>
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        Performance Summary
+        <span className="ml-2 text-gray-700 normal-case font-normal">
+          ({profile.run_count} backtest run{profile.run_count !== 1 ? "s" : ""})
+        </span>
+      </p>
+      {profile.run_count === 0 ? (
+        <p className="text-sm text-gray-500">
+          No backtest runs yet. Run this bot in Bot Arena to generate performance data.
+        </p>
+      ) : <>
+        <div className="rounded-lg bg-gray-800 border border-gray-700 p-3">
+          <p className="text-xs text-gray-500 mb-1">Avg Sharpe</p>
+          <p className={`text-lg font-bold font-mono ${profile.avg_sharpe == null ? "text-gray-400" : profile.avg_sharpe >= 1 ? "text-emerald-400" : profile.avg_sharpe >= 0.3 ? "text-yellow-400" : "text-red-400"}`}>{profile.avg_sharpe?.toFixed(3) ?? "—"}</p>
+          <p className="text-xs text-gray-400 mt-1">Average across all recorded runs; different markets and settings limit comparison.</p>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">Average and best PnL are not shown because runs can use different market units. No currency conversion is applied.</p>
+      </>}
+    </div>
+
+    {profile.recent_runs.length > 0 && (
+      <div>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          Recent Backtest Runs
+        </p>
+        <p className="text-xs text-gray-400 mb-2">PnL uses each market's simulated units; these runs are not necessarily comparable.</p>
+        <div className="overflow-x-auto rounded-lg border border-gray-700">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-700 bg-gray-800/50">
+                <th className="th">Date</th>
+                <th className="th">Symbol</th>
+                <th className="th">Source</th>
+                <th className="th">Simulated PnL</th>
+                <th className="th">Sharpe</th>
+                <th className="th">Win Rate</th>
+                <th className="th">Drawdown</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.recent_runs.map(run => (
+                <tr key={run.id} className="border-b border-gray-800 hover:bg-gray-800/40">
+                  <td className="td text-gray-500">{fmtDate(run.created_at)}</td>
+                  <td className="td font-mono text-gray-300">{run.symbol || "Unknown"}</td>
+                  <td className="td">
+                    <span className="badge bg-gray-700 text-gray-400">
+                      {run.data_source === "live" ? "historical data" : run.data_source}
+                    </span>
+                  </td>
+                  <td className="td"><PnlText value={run.final_pnl} symbol={run.symbol} /></td>
+                  <td className="td font-mono text-gray-300">{run.sharpe_ratio.toFixed(3)}</td>
+                  <td className="td font-mono text-gray-300">{(run.win_rate * 100).toFixed(1)}%</td>
+                  <td className="td font-mono text-red-400">{(run.max_drawdown * 100).toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+  </>;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,81 +291,15 @@ function BotProfileModal({ botId, onClose, onBuy }) {
               <p className="text-xs text-gray-600">Tokens not yet initialized for this bot.</p>
             )}
 
-            {/* Performance Summary */}
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                Performance Summary
-                <span className="ml-2 text-gray-700 normal-case font-normal">
-                  ({profile.run_count} backtest run{profile.run_count !== 1 ? "s" : ""})
-                </span>
-              </p>
-              {profile.run_count === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No backtest runs yet. Run this bot in Bot Arena to generate performance data.
-                </p>
-              ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: "Avg Sharpe",  value: profile.avg_sharpe?.toFixed(3) ?? "—", accent: profile.avg_sharpe >= 1 ? "text-emerald-400" : profile.avg_sharpe >= 0.3 ? "text-yellow-400" : "text-red-400" },
-                    { label: "Avg PnL",     value: profile.avg_pnl != null ? (profile.avg_pnl >= 0 ? `+$${fmtMoney(profile.avg_pnl)}` : `-$${fmtMoney(Math.abs(profile.avg_pnl))}`) : "—", accent: profile.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400" },
-                    { label: "Best PnL",    value: profile.best_pnl != null ? `${profile.best_pnl > 0 ? "+" : profile.best_pnl < 0 ? "-" : ""}$${fmtMoney(Math.abs(profile.best_pnl))}` : "—", accent: profile.best_pnl == null || profile.best_pnl === 0 ? "text-gray-400" : profile.best_pnl > 0 ? "text-emerald-400" : "text-red-400" },
-                  ].map(({ label, value, accent }) => (
-                    <div key={label} className="rounded-lg bg-gray-800 border border-gray-700 p-3">
-                      <p className="text-xs text-gray-500 mb-1">{label}</p>
-                      <p className={`text-lg font-bold font-mono ${accent}`}>{value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Recent Runs Table */}
-            {profile.recent_runs.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                  Recent Backtest Runs
-                </p>
-                <div className="overflow-x-auto rounded-lg border border-gray-700">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-700 bg-gray-800/50">
-                        <th className="th">Date</th>
-                        <th className="th">Symbol</th>
-                        <th className="th">Source</th>
-                        <th className="th">PnL</th>
-                        <th className="th">Sharpe</th>
-                        <th className="th">Win Rate</th>
-                        <th className="th">Drawdown</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {profile.recent_runs.map(run => (
-                        <tr key={run.id} className="border-b border-gray-800 hover:bg-gray-800/40">
-                          <td className="td text-gray-500">{fmtDate(run.created_at)}</td>
-                          <td className="td font-mono text-gray-300">{run.symbol}</td>
-                          <td className="td">
-                            <span className="badge bg-gray-700 text-gray-400">
-                              {run.data_source === "live" ? "historical data" : run.data_source}
-                            </span>
-                          </td>
-                          <td className="td"><PnlText value={run.final_pnl} /></td>
-                          <td className="td font-mono text-gray-300">{run.sharpe_ratio.toFixed(3)}</td>
-                          <td className="td font-mono text-gray-300">{(run.win_rate * 100).toFixed(1)}%</td>
-                          <td className="td font-mono text-red-400">{(run.max_drawdown * 100).toFixed(1)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            <ProfilePerformance profile={profile} />
 
             {/* Buy button */}
+            {!profile.is_active && <p className="text-xs text-gray-400">This bot is inactive; new token purchases are unavailable.</p>}
             {dist && !(dist.public_pool_remaining > 0) && <p className="text-xs text-gray-400">No public pool tokens are currently available.</p>}
             <div className="border-t border-gray-800 pt-4 flex gap-3">
               <button
                 onClick={() => { onBuy(profile); onClose(); }}
-                disabled={!dist || !(dist.public_pool_remaining > 0)}
+                disabled={!profile.is_active || !dist || !(dist.public_pool_remaining > 0)}
                 className="btn-primary flex-1"
               >
                 Buy RST Tokens — $0.01 / token
@@ -467,7 +469,7 @@ function AvailableBotCard({ bot, onBuy, onProfile, availabilityRevision }) {
 }
 
 function AvailableBots({ bots, loading, error, onBuy, onProfile, availabilityRevision }) {
-  const active = bots.filter(b => b.status === "approved" || b.status === "live");
+  const active = bots.filter(b => b.is_active && (b.status === "approved" || b.status === "live"));
 
   return (
     <div className="card">
@@ -475,7 +477,7 @@ function AvailableBots({ bots, loading, error, onBuy, onProfile, availabilityRev
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
       {error   && <p className="text-sm text-red-400">Error: {error}</p>}
       {!loading && !error && active.length === 0 && (
-        <p className="text-sm text-gray-500">No live bots available yet.</p>
+        <p className="text-sm text-gray-500">No active approved bots are available yet.</p>
       )}
       {active.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -94,6 +94,16 @@
 .lab-stage-header { align-items: center; padding-bottom: 20px; border-bottom: 1px solid #2a3a2e; }
 .lab-status { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #3a4f38; border-radius: 3px; color: #bcdf9a; background: #1a2a1a; font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: .05em; white-space: nowrap; }
 .lab-stale { margin-top: 15px; padding: 10px 12px; border: 1px solid #6b5939; border-radius: 5px; color: #f3d395; background: #342d1e; font-size: 11px; }
+.lab-world-comparison { margin-top: 15px; padding: 12px; border: 1px solid #44643d; border-radius: 5px; background: #1b2b1b; color: #c9ddc2; font-size: 11px; line-height: 1.5; }
+.lab-world-comparison.is-mismatch { border-color: #8b6941; background: #342d1e; color: #f3d395; }
+.lab-world-comparison strong { color: #d7f6b2; font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: .07em; }
+.lab-world-comparison.is-mismatch strong { color: #ffe1a5; }
+.lab-world-comparison p { margin-top: 5px; }
+.lab-world-comparison details { margin-top: 6px; }
+.lab-world-comparison summary { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.lab-world-comparison dl { display: grid; gap: 6px; margin-top: 8px; }
+.lab-world-comparison dt { color: #a5bba3; }
+.lab-world-comparison code { word-break: break-all; }
 .lab-empty { display: flex; min-height: 535px; flex-direction: column; align-items: center; justify-content: center; padding: 35px 12px 25px; text-align: center; }
 .lab-empty-radar { position: relative; display: grid; place-items: center; width: 220px; height: 220px; margin-bottom: 20px; border: 1px solid #5f82583b; border-radius: 50%; background: radial-gradient(circle, #385d343d, transparent 70%); }
 .lab-empty-radar > span { position: absolute; border: 1px solid #789c6e25; border-radius: 50%; }

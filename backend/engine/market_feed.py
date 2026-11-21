@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 # yfinance uses different interval strings than our internal timeframe labels
 _YF_INTERVAL_MAP: dict[str, str] = {
     "1h": "1h",
-    "4h": "4h",
     "1d": "1d",
 }
 
@@ -29,6 +28,31 @@ _MOCK_TIMEFRAME_STEPS = {
 
 class MarketFeedError(Exception):
     pass
+
+
+class UnsupportedMarketTimeframe(MarketFeedError):
+    """The selected provider does not offer the requested timeframe."""
+
+
+def _validate_historical_candles(candles: list[Candle], symbol: str) -> None:
+    """Fail instead of simulating on missing or malformed provider data."""
+    if len(candles) < 2:
+        raise MarketFeedError(f"Historical data for '{symbol}' contained fewer than two usable candles.")
+    previous: datetime | None = None
+    for candle in candles:
+        # Pandas NaT can survive Pydantic datetime validation and compares
+        # unequal to itself, so an ordering check alone does not reject it.
+        if candle.timestamp != candle.timestamp:
+            raise MarketFeedError(f"Historical data for '{symbol}' contained an invalid timestamp.")
+        values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
+        if (candle.symbol != symbol or any(not math.isfinite(value) for value in values)
+                or min(candle.open, candle.high, candle.low, candle.close) <= 0 or candle.volume < 0
+                or candle.low > min(candle.open, candle.close)
+                or candle.high < max(candle.open, candle.close)):
+            raise MarketFeedError(f"Historical data for '{symbol}' contained invalid OHLCV values.")
+        if previous is not None and candle.timestamp <= previous:
+            raise MarketFeedError(f"Historical data for '{symbol}' had duplicate or out-of-order timestamps.")
+        previous = candle.timestamp
 
 
 class MockMarketFeed:
@@ -112,8 +136,12 @@ class YFinanceFeed:
             raise MarketFeedError(
                 f"Invalid timeframe '{timeframe}'. Must be one of {VALID_TIMEFRAMES}."
             )
+        if timeframe == "4h":
+            raise UnsupportedMarketTimeframe(
+                "Yahoo Finance does not provide native 4-hour candles. Select 1 Hour or 1 Day for NSE data."
+            )
         interval = _YF_INTERVAL_MAP[timeframe]
-        period_map = {"1h": "60d", "4h": "60d", "1d": "2y"}
+        period_map = {"1h": "60d", "1d": "2y"}
         period = period_map[timeframe]
         logger.info("Fetching %d %s candles for %s from yfinance", limit, timeframe, symbol)
         try:
@@ -133,30 +161,30 @@ class YFinanceFeed:
         df = df.tail(limit)
 
         candles: list[Candle] = []
-        for ts, row in df.iterrows():
-            if hasattr(ts, "to_pydatetime"):
-                dt = ts.to_pydatetime()
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            for ts, row in df.iterrows():
+                if hasattr(ts, "to_pydatetime"):
+                    dt = ts.to_pydatetime()
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    else:
+                        dt = dt.astimezone(timezone.utc)
                 else:
-                    dt = dt.astimezone(timezone.utc)
-            else:
-                dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
-            candles.append(
-                Candle(
-                    symbol=symbol,
-                    timestamp=dt,
-                    open=float(row["Open"]),
-                    high=float(row["High"]),
-                    low=float(row["Low"]),
-                    close=float(row["Close"]),
-                    volume=float(row.get("Volume", 0.0)),
+                    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+                candles.append(
+                    Candle(
+                        symbol=symbol,
+                        timestamp=dt,
+                        open=float(row["Open"]),
+                        high=float(row["High"]),
+                        low=float(row["Low"]),
+                        close=float(row["Close"]),
+                        volume=float(row.get("Volume", 0.0)),
+                    )
                 )
-            )
-        candles = [
-            c for c in candles
-            if not any(math.isnan(v) or v == 0 for v in [c.open, c.high, c.low, c.close])
-        ]
+        except (KeyError, TypeError, ValueError, OverflowError, OSError) as exc:
+            raise MarketFeedError(f"Historical data for '{symbol}' contained malformed candles.") from exc
+        _validate_historical_candles(candles, symbol)
         logger.info("Fetched %d candles successfully", len(candles))
         return candles
 
@@ -200,18 +228,22 @@ class CCXTFeed:
             )
 
         candles: list[Candle] = []
-        for row in raw:
-            ts_ms, open_, high, low, close, volume = row
-            candles.append(
-                Candle(
-                    symbol=symbol,
-                    timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
-                    open=float(open_),
-                    high=float(high),
-                    low=float(low),
-                    close=float(close),
-                    volume=float(volume),
+        try:
+            for row in raw:
+                ts_ms, open_, high, low, close, volume = row
+                candles.append(
+                    Candle(
+                        symbol=symbol,
+                        timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
+                        open=float(open_),
+                        high=float(high),
+                        low=float(low),
+                        close=float(close),
+                        volume=float(volume),
+                    )
                 )
-            )
+        except (TypeError, ValueError, OverflowError, OSError) as exc:
+            raise MarketFeedError(f"Historical data for '{symbol}' contained malformed candles.") from exc
+        _validate_historical_candles(candles, symbol)
         logger.info("Fetched %d candles successfully", len(candles))
         return candles

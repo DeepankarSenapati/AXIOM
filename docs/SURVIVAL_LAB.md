@@ -72,7 +72,9 @@ npm run build
    trigger and blocked buy signal. The decision comparison shows the recorded
    unguarded path at the same candle. The guard does not force a sale.
 3. Generate Synthetic Worlds. Review each seed, including cases in which
-   the guard worsens final equity, then load one world and replay it.
+   the guard worsens final equity, then load one world and replay it. The
+   replay compares the recorded and rerun fingerprints; a match is not an
+   independent audit or proof of execution.
 4. Generate Shock Landscape to compare a small grid of gap sizes and fees.
    Check prior-close exposure and blocked signals, then load a cell for replay.
 5. Download the JSON passport for the current single experiment. It includes
