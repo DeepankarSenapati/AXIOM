@@ -20,6 +20,11 @@ _YF_INTERVAL_MAP: dict[str, str] = {
 }
 
 VALID_TIMEFRAMES = ("1h", "4h", "1d")
+_MOCK_TIMEFRAME_STEPS = {
+    "1h": timedelta(hours=1),
+    "4h": timedelta(hours=4),
+    "1d": timedelta(days=1),
+}
 
 
 class MarketFeedError(Exception):
@@ -34,9 +39,14 @@ class MockMarketFeed:
         start_price: float,
         start_time: datetime | None = None,
         seed: int | None = None,
+        timeframe: Literal["1h", "4h", "1d"] = "1h",
     ) -> list[Candle]:
-        if seed is not None:
-            random.seed(seed)
+        if timeframe not in VALID_TIMEFRAMES:
+            raise MarketFeedError(
+                f"Invalid timeframe '{timeframe}'. Must be one of {VALID_TIMEFRAMES}."
+            )
+        rng = random.Random(seed)
+        step = _MOCK_TIMEFRAME_STEPS[timeframe]
         if start_time is None:
             start_time = datetime(2026, 1, 1, 0, 0, 0)
 
@@ -44,17 +54,17 @@ class MockMarketFeed:
         price = start_price
 
         for i in range(n):
-            change = random.uniform(-0.02, 0.02)  # ±2% random walk
+            change = rng.uniform(-0.02, 0.02)  # ±2% random walk
             close = round(price * (1 + change), 4)
-            high = round(max(price, close) * random.uniform(1.0, 1.01), 4)
-            low = round(min(price, close) * random.uniform(0.99, 1.0), 4)
+            high = round(max(price, close) * rng.uniform(1.0, 1.01), 4)
+            low = round(min(price, close) * rng.uniform(0.99, 1.0), 4)
             open_ = round(price, 4)
-            volume = round(random.uniform(1_000, 100_000), 2)
+            volume = round(rng.uniform(1_000, 100_000), 2)
 
             candles.append(
                 Candle(
                     symbol=symbol,
-                    timestamp=start_time + timedelta(hours=i),
+                    timestamp=start_time + step * i,
                     open=open_,
                     high=high,
                     low=low,

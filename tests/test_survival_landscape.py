@@ -33,6 +33,8 @@ def test_each_cell_is_an_exact_individually_replayable_experiment() -> None:
         expected = initial.model_copy(update={"shock_pct": cell.shock_pct, "fee_bps": cell.fee_bps})
         assert cell.request == expected
         replay = run_survival(expected)
+        assert replay.request == cell.request
+        assert replay.strategy_key == expected.strategy_key
         assert cell.fingerprint == replay.fingerprint
         assert grid.engine_version == replay.engine_version
         assert grid.strategy_parameters == replay.strategy_parameters

@@ -12,7 +12,7 @@ from backend.api.models import (
     BotResponse,
     BotTokenDistribution,
 )
-from backend.auth.dependencies import get_current_user
+from backend.auth.dependencies import get_current_user, require_role
 from backend.db.models import DBBacktestRun, DBBot, DBToken, DBUser
 from backend.db.session import get_db
 
@@ -27,7 +27,7 @@ class BotNotFoundError(Exception):
 def create_bot(
     payload: BotCreate,
     db: Session = Depends(get_db),
-    current_user: DBUser = Depends(get_current_user),
+    current_user: DBUser = Depends(require_role("admin", "tech_company")),
 ) -> BotResponse:
     bot = DBBot(
         id=str(uuid.uuid4()),
@@ -88,10 +88,18 @@ def get_bot(bot_id: str, db: Session = Depends(get_db)) -> BotResponse:
 
 
 @router.delete("/{bot_id}", status_code=204)
-def deactivate_bot(bot_id: str, db: Session = Depends(get_db)) -> None:
+def deactivate_bot(
+    bot_id: str,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+) -> None:
     bot = db.query(DBBot).filter(DBBot.id == bot_id).first()
     if bot is None:
         raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found")
+    if current_user.role != "admin" and not (
+        current_user.role == "tech_company" and bot.tech_company_id == current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can deactivate this bot.")
     bot.is_active = False
     db.commit()
 

@@ -33,6 +33,8 @@ def test_worlds_match_replayed_results_and_derive_paired_aggregates() -> None:
     assert batch.world_count == 5
     for world in batch.worlds:
         replay = run_survival(initial.model_copy(update={"seed": world.seed}))
+        assert replay.request == initial.model_copy(update={"seed": world.seed})
+        assert replay.strategy_key == initial.strategy_key
         assert world.fingerprint == replay.fingerprint
         assert world.unguarded.final_equity == pytest.approx(replay.unguarded.final_equity)
         assert world.unguarded.total_fees == pytest.approx(replay.unguarded.total_fees)

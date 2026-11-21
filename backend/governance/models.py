@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import IntEnum
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GovernanceStage(IntEnum):
@@ -24,10 +24,10 @@ class PollResult(BaseModel):
 
 class VoteSubmission(BaseModel):
     bot_id: str
-    quarter: str
+    quarter: str = Field(pattern=r"^[0-9]{4}-Q[1-4]$")
     voter_address: str
     vote: Literal["satisfied", "unsatisfied"]
-    token_weight: float
+    token_weight: float = Field(gt=0, allow_inf_nan=False)
 
 
 class StageTransitionEvent(BaseModel):

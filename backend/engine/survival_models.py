@@ -96,6 +96,8 @@ class SurvivalScenario(BaseModel):
 class SurvivalResponse(BaseModel):
     fingerprint: str
     engine_version: str
+    strategy_key: StrategyKey
+    request: SurvivalRequest
     strategy_parameters: dict[str, int | float]
     # Fraction of available cash requested by built-in BUY signals, not the fill cap.
     signal_cash_fraction: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)

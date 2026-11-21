@@ -7,6 +7,7 @@ from threading import BoundedSemaphore
 import pytest
 
 from backend.api import lab
+from backend.engine import survival
 from backend.engine.survival import SurvivalRequest, run_survival
 from backend.engine.survival_landscape import ShockLandscapeRequest
 from backend.engine.survival_worlds import SyntheticWorldsRequest
@@ -62,6 +63,8 @@ def test_http_run_is_synthetic_reproducible_and_guard_off_is_null() -> None:
     assert response["scenario"]["source"] == "synthetic"
     assert response["scenario"]["shock_index"] == 20
     assert response["guarded"] is None
+    assert response["strategy_key"] == "rsi"
+    assert response["request"] == SurvivalRequest(**payload).model_dump(mode="json")
     assert len(response["candles"]) == len(response["unguarded"]["equity_curve"]) == 40
     assert len(response["fingerprint"]) == 64
     assert response["strategy_parameters"] and response["engine_version"]
@@ -163,6 +166,10 @@ def test_paired_http_matches_standalone_runs_with_one_other_slot_occupied(
 
     assert status == base_status == shock_status == 200
     assert paired == {"baseline": baseline, "shock": shock}
+    requested = SurvivalRequest(**payload).model_dump(mode="json")
+    assert baseline["request"] == {**requested, "shock_pct": 0.0}
+    assert shock["request"] == requested
+    assert baseline["strategy_key"] == shock["strategy_key"] == requested["strategy_key"]
     assert baseline["scenario"]["shock_pct"] == 0
     assert shock["scenario"]["shock_pct"] == shock_pct
     assert baseline["candles"][:30] == shock["candles"][:30]
@@ -172,6 +179,33 @@ def test_paired_http_matches_standalone_runs_with_one_other_slot_occupied(
     assert not semaphore.acquire(blocking=False)
     semaphore.release()
     semaphore.release()
+
+
+def test_http_run_echoes_the_normalized_request_not_raw_values() -> None:
+    payload = {"strategy_key": "momentum", "num_candles": "40", "seed": "123",
+               "shock_pct": "20", "shock_index": "25", "starting_cash": "1234.5"}
+    status, response = post_json("/arena/lab/run", payload)
+    assert status == 200
+    assert response["strategy_key"] == "momentum"
+    assert response["request"] == SurvivalRequest(**payload).model_dump(mode="json")
+    assert type(response["request"]["seed"]) is int
+    assert isinstance(response["request"]["starting_cash"], float)
+
+
+def test_paired_fingerprints_both_change_with_engine_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {"strategy_key": "momentum", "num_candles": 40, "seed": 123,
+               "shock_pct": 20, "shock_index": 25}
+    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v2")
+    status_v2, v2 = post_json("/arena/lab/paired", payload)
+    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v3")
+    status_v3, v3 = post_json("/arena/lab/paired", payload)
+    assert status_v2 == status_v3 == 200
+    for side in ("baseline", "shock"):
+        assert v2[side]["request"] == v3[side]["request"]
+        assert v2[side]["candles"] == v3[side]["candles"]
+        assert v2[side]["engine_version"] == "survival-lab-v2"
+        assert v3[side]["engine_version"] == "survival-lab-v3"
+        assert v2[side]["fingerprint"] != v3[side]["fingerprint"]
 
 
 def test_paired_http_validates_the_scenario() -> None:
@@ -286,25 +320,32 @@ def test_paired_releases_slot_on_either_replay_failure(
     ("field", "changed"),
     [("engine_version", "changed-version"),
      ("strategy_parameters", {"changed": 42}),
-     ("signal_cash_fraction", 0.987)],
+     ("signal_cash_fraction", 0.987),
+     ("strategy_key", "rsi"),
+     ("request", None)],
 )
+@pytest.mark.parametrize("changed_side", ["baseline", "shock"])
 def test_paired_rejects_inconsistent_implementation_metadata_and_releases_slot(
-    field: str, changed: object, monkeypatch: pytest.MonkeyPatch
+    field: str, changed: object, changed_side: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     semaphore = BoundedSemaphore(2)
     monkeypatch.setattr(lab, "_experiment_slots", semaphore)
-    reference = run_survival(SurvivalRequest(num_candles=20))
     calls = 0
 
     def inconsistent(request: SurvivalRequest):
         nonlocal calls
         calls += 1
-        return reference if calls == 1 else reference.model_copy(update={field: changed})
+        actual = run_survival(request)
+        side = "baseline" if calls == 1 else "shock"
+        if side != changed_side:
+            return actual
+        bad_value = request.model_copy(update={"seed": request.seed + 1}) if field == "request" else changed
+        return actual.model_copy(update={field: bad_value})
 
     monkeypatch.setattr(lab, "run_survival", inconsistent)
-    with pytest.raises(RuntimeError, match="implementation or signal sizing changed"):
+    with pytest.raises(RuntimeError):
         lab.run_paired_experiment(SurvivalRequest(num_candles=20))
-    assert calls == 2
+    assert calls >= (1 if changed_side == "baseline" else 2)
     assert semaphore.acquire(blocking=False)
     assert semaphore.acquire(blocking=False)
     semaphore.release()

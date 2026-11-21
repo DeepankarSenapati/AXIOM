@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 
 from sqlalchemy import func
@@ -15,11 +16,27 @@ class PollAlreadyClosedError(Exception):
     pass
 
 
+class EmptyPollError(Exception):
+    pass
+
+
 class VotingManager:
     def __init__(self, db: Session) -> None:
         self.db = db
 
     def submit_vote(self, submission: VoteSubmission) -> None:
+        closed = (
+            self.db.query(DBSatisfactionPoll)
+            .filter(
+                DBSatisfactionPoll.bot_id == submission.bot_id,
+                DBSatisfactionPoll.quarter == submission.quarter,
+            )
+            .first()
+        )
+        if closed is not None:
+            raise PollAlreadyClosedError(
+                f"Poll for bot '{submission.bot_id}' quarter '{submission.quarter}' is already closed"
+            )
         existing = (
             self.db.query(DBGovernanceVote)
             .filter(
@@ -71,8 +88,12 @@ class VotingManager:
         )
 
         total_weight = sum(v.token_weight for v in votes)
+        if not math.isfinite(total_weight) or total_weight <= 0 or any(
+            not math.isfinite(v.token_weight) or v.token_weight <= 0 for v in votes
+        ):
+            raise EmptyPollError("Cannot close a poll without positive voting weight.")
         satisfied_weight = sum(v.token_weight for v in votes if v.vote == "satisfied")
-        satisfaction_rate = (satisfied_weight / total_weight) if total_weight > 0 else 0.0
+        satisfaction_rate = satisfied_weight / total_weight
         closed_at = datetime.now(tz=timezone.utc)
 
         self.db.add(

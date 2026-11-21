@@ -14,7 +14,7 @@ from backend.api.models import (
     SellTokensRequest,
     TokenBalancesResponse,
 )
-from backend.auth.dependencies import get_current_user
+from backend.auth.dependencies import get_current_user, require_role
 from backend.config import EXIT_FEE, RST_PRICE
 from backend.db.models import DBBot, DBDistributionPayout, DBToken, DBUser
 from backend.db.session import get_db
@@ -22,6 +22,7 @@ from backend.tokenomics.distributor import Distributor, InvalidRevenueError
 from backend.tokenomics.ledger import InsufficientTokensError, TokenLedger
 
 router = APIRouter(prefix="/tokenomics", tags=["tokenomics"])
+_distribution_manager = require_role("admin", "governance_company")
 
 
 def _get_active_bot(bot_id: str, db: Session) -> DBBot:
@@ -35,9 +36,13 @@ def _get_active_bot(bot_id: str, db: Session) -> DBBot:
 def init_tokens(
     payload: InitTokensRequest,
     db: Session = Depends(get_db),
-    _: DBUser = Depends(get_current_user),
+    current_user: DBUser = Depends(get_current_user),
 ) -> TokenBalancesResponse:
-    _get_active_bot(payload.bot_id, db)
+    bot = _get_active_bot(payload.bot_id, db)
+    if current_user.role != "admin" and not (
+        current_user.role == "tech_company" and bot.tech_company_id == current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Only the bot owner or an admin can initialize its tokens.")
     ledger = TokenLedger(db)
 
     existing = ledger.get_balances(payload.bot_id)
@@ -64,7 +69,7 @@ def get_balances(bot_id: str, db: Session = Depends(get_db)) -> TokenBalancesRes
 def distribute_revenue(
     payload: DistributeRevenueRequest,
     db: Session = Depends(get_db),
-    _: DBUser = Depends(get_current_user),
+    _: DBUser = Depends(_distribution_manager),
 ) -> RevenueDistributionResponse:
     _get_active_bot(payload.bot_id, db)
     ledger = TokenLedger(db)
@@ -118,12 +123,16 @@ def purchase_tokens(
 
     ledger = TokenLedger(db)
     try:
-        ledger.transfer(payload.bot_id, "public_pool", current_user.email, payload.amount)
+        ledger.transfer(payload.bot_id, "public_pool", current_user.email, payload.amount, commit=False)
     except InsufficientTokensError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    current_user.wallet_balance = round(current_user.wallet_balance - cost, 2)
-    db.commit()
+    try:
+        current_user.wallet_balance = round(current_user.wallet_balance - cost, 2)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return {
         "bot_id": payload.bot_id,
@@ -161,15 +170,21 @@ def sell_tokens(
     gross = round(payload.amount * RST_PRICE, 4)
     fee = round(gross * EXIT_FEE, 4)
     proceeds = round(gross - fee, 4)
+    if proceeds <= 0:
+        raise HTTPException(status_code=422, detail="Amount is too small to produce positive simulated proceeds.")
 
     ledger = TokenLedger(db)
     try:
-        ledger.transfer(payload.bot_id, current_user.email, "public_pool", payload.amount)
+        ledger.transfer(payload.bot_id, current_user.email, "public_pool", payload.amount, commit=False)
     except InsufficientTokensError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    current_user.wallet_balance = round(current_user.wallet_balance + proceeds, 4)
-    db.commit()
+    try:
+        current_user.wallet_balance = round(current_user.wallet_balance + proceeds, 4)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return {
         "bot_id": payload.bot_id,

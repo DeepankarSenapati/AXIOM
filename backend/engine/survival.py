@@ -12,7 +12,7 @@ from backend.engine.survival_models import SurvivalRequest, SurvivalResponse, Su
 
 
 # Bump this when replay, fixture, strategy assumptions, or output semantics change.
-ENGINE_VERSION = "survival-lab-v2"
+ENGINE_VERSION = "survival-lab-v3"
 
 
 def _assumptions(request: SurvivalRequest, signal_cash_fraction: float) -> list[str]:
@@ -75,6 +75,8 @@ def run_survival(request: SurvivalRequest) -> SurvivalResponse:
     return SurvivalResponse(
         fingerprint=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         engine_version=ENGINE_VERSION,
+        strategy_key=request.strategy_key,
+        request=request,
         strategy_parameters=strategy_parameters,
         signal_cash_fraction=signal_cash_fraction,
         scenario=SurvivalScenario(

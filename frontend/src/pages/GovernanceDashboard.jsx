@@ -137,7 +137,7 @@ function SatisfactionPolls({ bots }) {
               <th className="th">Bot</th>
               <th className="th">Quarter</th>
               <th className="th">Satisfaction</th>
-              <th className="th">Stage</th>
+              <th className="th">Stage Before Close</th>
               <th className="th">Closed At</th>
             </tr>
           </thead>
@@ -175,7 +175,7 @@ function GovRevenue() {
     <div className="card">
       <h2 className="text-sm font-semibold text-gray-300 mb-2">Revenue Summary</h2>
       <p className="text-sm text-gray-500">Governance revenue tracking coming soon.</p>
-      <p className="text-xs text-gray-600 mt-1">Governance company receives 15% of each bot&#39;s revenue.</p>
+      <p className="text-xs text-gray-600 mt-1">The simulated governance pool receives a 15% allocation; it is not a user wallet credit.</p>
     </div>
   );
 }

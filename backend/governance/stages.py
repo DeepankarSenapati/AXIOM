@@ -1,3 +1,5 @@
+import math
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -7,7 +9,7 @@ from backend.config import (
     STAGE2_TRIGGER_THRESHOLD,
     STAGE3_CONSECUTIVE_QUARTERS,
 )
-from backend.governance.models import GovernanceStage, StageTransitionEvent
+from backend.governance.models import GovernanceStage, PollResult, StageTransitionEvent
 from backend.governance.voting import VotingManager
 
 
@@ -21,8 +23,7 @@ class StageManager:
         if not polls:
             return GovernanceStage.NORMAL
 
-        rates = [p.satisfaction_rate for p in polls]
-        consecutive_below = self._trailing_below(rates, STAGE2_TRIGGER_THRESHOLD)
+        consecutive_below = self._trailing_below_polls(polls, STAGE2_TRIGGER_THRESHOLD)
 
         if consecutive_below >= STAGE3_CONSECUTIVE_QUARTERS:
             return GovernanceStage.COMMUNITY
@@ -36,12 +37,10 @@ class StageManager:
             return None
 
         # Stage before the most recent poll
-        prior_rates = [p.satisfaction_rate for p in polls[:-1]]
-        prior_consecutive = self._trailing_below(prior_rates, STAGE2_TRIGGER_THRESHOLD)
+        prior_consecutive = self._trailing_below_polls(polls[:-1], STAGE2_TRIGGER_THRESHOLD)
         prior_stage = self._stage_from_consecutive(prior_consecutive)
 
-        all_rates = [p.satisfaction_rate for p in polls]
-        current_consecutive = self._trailing_below(all_rates, STAGE2_TRIGGER_THRESHOLD)
+        current_consecutive = self._trailing_below_polls(polls, STAGE2_TRIGGER_THRESHOLD)
         current_stage = self._stage_from_consecutive(current_consecutive)
 
         if current_stage == prior_stage:
@@ -65,6 +64,27 @@ class StageManager:
                 count += 1
             else:
                 break
+        return count
+
+    @staticmethod
+    def _trailing_below_polls(polls: list[PollResult], threshold: float) -> int:
+        """Count only adjacent, canonical quarters; a gap breaks the streak."""
+        count = 0
+        next_quarter: int | None = None
+        for poll in reversed(polls):
+            match = re.fullmatch(r"([0-9]{4})-Q([1-4])", poll.quarter)
+            if (
+                match is None
+                or not math.isfinite(poll.total_weight)
+                or poll.total_weight <= 0
+                or not poll.satisfaction_rate < threshold
+            ):
+                break
+            quarter = int(match.group(1)) * 4 + int(match.group(2))
+            if next_quarter is not None and quarter + 1 != next_quarter:
+                break
+            count += 1
+            next_quarter = quarter
         return count
 
     @staticmethod

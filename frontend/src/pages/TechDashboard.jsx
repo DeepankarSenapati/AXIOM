@@ -54,9 +54,9 @@ function StatusBadge({ status }) {
 function SummaryCards({ summary, loading }) {
   const cards = [
     {
-      label: "Total Earned (15%)",
+      label: "Tech Pool Allocations (15%)",
       value: loading ? "—" : `$${fmtMoney(summary?.total_your_earnings ?? 0)}`,
-      sub: "your cut across all distributions",
+      sub: "simulated allocations, not wallet credits",
       accent: "text-emerald-400",
     },
     {
@@ -72,7 +72,7 @@ function SummaryCards({ summary, loading }) {
       accent: "text-indigo-400",
     },
     {
-      label: "Distributions Paid",
+      label: "Distribution Events",
       value: loading ? "—" : (summary?.total_distributions ?? 0),
       sub: "revenue events processed",
       accent: "text-gray-100",
@@ -101,7 +101,7 @@ function MyBotsEarnings({ bots, loading, error }) {
     <div className="card">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-300">My Bots</h2>
-        <p className="text-xs text-gray-600">15% of each distribution is yours</p>
+        <p className="text-xs text-gray-600">Tech pool allocations are not credits to your wallet.</p>
       </div>
 
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
@@ -119,7 +119,7 @@ function MyBotsEarnings({ bots, loading, error }) {
                 <th className="th">Strategy</th>
                 <th className="th">Status</th>
                 <th className="th">Revenue Distributed</th>
-                <th className="th">Your 15%</th>
+                <th className="th">Tech Pool 15%</th>
                 <th className="th">Investors</th>
                 <th className="th">RST Circulating</th>
                 <th className="th">Distributions</th>
@@ -357,7 +357,7 @@ export default function TechDashboard() {
           <p className="page-kicker">Builder workspace</p>
           <h1>Tech Dashboard</h1>
           <p className="page-subtitle">
-            Your bots earn you 15% of every revenue distribution — automatically.
+            Simulated distributions allocate 15% of distributable revenue to the tech pool; this is not a credit to your wallet.
           </p>
         </div>
         <button

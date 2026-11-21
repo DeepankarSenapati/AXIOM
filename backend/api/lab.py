@@ -46,10 +46,15 @@ def run_paired_experiment(request: SurvivalRequest) -> PairedExperimentResponse:
     if not _experiment_slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="The lab is busy. Please try again shortly.")
     try:
-        baseline = run_survival(request.model_copy(update={"shock_pct": 0.0}))
+        baseline_request = request.model_copy(update={"shock_pct": 0.0})
+        baseline = run_survival(baseline_request)
         shock = run_survival(request)
         if (
             baseline.engine_version != shock.engine_version
+            or baseline.strategy_key != request.strategy_key
+            or shock.strategy_key != request.strategy_key
+            or baseline.request != baseline_request
+            or shock.request != request
             or baseline.strategy_parameters != shock.strategy_parameters
             or baseline.signal_cash_fraction != shock.signal_cash_fraction
         ):

@@ -74,6 +74,11 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> UserRes
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid role '{payload.role}'. Must be one of {sorted(_VALID_ROLES)}.",
         )
+    if payload.role != "token_holder":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public registration is limited to token holders. Use a seeded local demo account for other roles.",
+        )
     existing = db.query(DBUser).filter(DBUser.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")

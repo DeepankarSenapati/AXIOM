@@ -15,6 +15,7 @@ from backend.api.models import (
     TradeRecordResponse,
 )
 from backend.bots.registry import UnknownStrategyError, get_strategy_class
+from backend.bots.validation import normalize_strategy_params
 from backend.db.models import DBBacktestRun, DBBot
 from backend.db.session import get_db
 from backend.engine.backtester import Backtester
@@ -38,7 +39,12 @@ def _build_runner(bot: DBBot, symbol: str, starting_cash: float) -> BotRunner:
             status_code=422,
             detail=f"Unknown strategy '{bot.strategy_name}' for bot '{bot.id}'",
         )
-    params: dict = bot.params if bot.params else {}
+    try:
+        params = normalize_strategy_params(bot.strategy_name, bot.params or {})
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid strategy parameters for bot '{bot.id}': {exc}"
+        ) from exc
     strategy = strategy_cls(symbol=symbol, **params)
     return BotRunner(bot_id=bot.id, strategy=strategy, starting_cash=starting_cash)
 
@@ -65,6 +71,7 @@ def _fetch_candles(payload: RunArenaRequest | BacktestRequest) -> list[Candle]:
         n=payload.num_candles,
         start_price=payload.start_price,
         seed=seed,
+        timeframe=payload.timeframe,
     )
 
 
@@ -177,6 +184,12 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
     if missing:
         raise HTTPException(status_code=404, detail=f"Bots not found or inactive: {sorted(missing)}")
 
+    # Validate stored bot parameters before fetching any external data.
+    runners = {
+        bot.id: _build_runner(bot, payload.bot_symbols.get(bot.id, payload.symbol), payload.starting_cash)
+        for bot in bots
+    }
+
     # A symbol override must change the market data, not merely the action label.
     # Fetch each distinct symbol once so bots on the same market see identical bars.
     candles_by_symbol: dict[str, list[Candle]] = {}
@@ -193,8 +206,7 @@ def run_arena(payload: RunArenaRequest, db: Session = Depends(get_db)) -> ArenaR
     for bot in bots:
         symbol = payload.bot_symbols.get(bot.id, payload.symbol)
         try:
-            runner = _build_runner(bot, symbol, payload.starting_cash)
-            results[bot.id] = Backtester(runner).run(candles_by_symbol[symbol])
+            results[bot.id] = Backtester(runners[bot.id]).run(candles_by_symbol[symbol])
         except HTTPException:
             raise
         except Exception as exc:
@@ -225,11 +237,11 @@ def backtest_bot(
     if bot is None:
         raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found or inactive")
 
+    runner = _build_runner(bot, payload.symbol, payload.starting_cash)
     candles = _fetch_candles(payload)
     benchmark_pnl = _calc_benchmark(candles, payload.starting_cash)
 
     try:
-        runner = _build_runner(bot, payload.symbol, payload.starting_cash)
         backtester = Backtester(runner)
         result = backtester.run(candles)
     except Exception as exc:

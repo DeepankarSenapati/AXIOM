@@ -342,8 +342,11 @@ def test_scenario_fingerprint_is_reproducible_and_captures_assumptions() -> None
 
 @pytest.mark.parametrize("strategy_key", ["simple_ma", "rsi", "bollinger_bands", "macd", "momentum"])
 def test_passport_reports_strategy_parameters_and_engine_version(strategy_key: str) -> None:
-    response = run_survival(request_for(50, strategy_key=strategy_key))
+    request = request_for(50, strategy_key=strategy_key)
+    response = run_survival(request)
     assert response.strategy_parameters == get_strategy_defaults(strategy_key)
+    assert response.strategy_key == strategy_key
+    assert response.request == request
     assert response.engine_version == survival.ENGINE_VERSION
     assert response.engine_version
 
@@ -358,6 +361,18 @@ def test_fingerprint_changes_when_engine_version_changes(monkeypatch: pytest.Mon
     assert changed.candles == original.candles
     assert changed.engine_version == "test-version-change"
     assert changed.fingerprint != original.fingerprint
+
+
+def test_v3_fingerprint_differs_from_v2_for_the_same_request_and_tape(monkeypatch: pytest.MonkeyPatch) -> None:
+    request = request_for(30, strategy_key="momentum", seed=123, shock_pct=20, shock_index=15)
+    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v2")
+    v2 = run_survival(request)
+    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v3")
+    v3 = run_survival(request)
+    assert v2.candles == v3.candles
+    assert v2.request == v3.request == request
+    assert v2.strategy_key == v3.strategy_key == request.strategy_key
+    assert v2.fingerprint != v3.fingerprint
 
 
 def test_signal_sizing_configuration_is_reported_and_changes_fingerprint(

@@ -2,9 +2,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.bots.registry import STRATEGY_MAP
+from backend.bots.validation import normalize_strategy_params
 
 
 # ── Bots ──────────────────────────────────────────────────────────────────────
@@ -12,7 +13,7 @@ from backend.bots.registry import STRATEGY_MAP
 class BotCreate(BaseModel):
     name: str
     strategy_key: str
-    params: dict[str, float | int | str] = {}
+    params: dict[str, object] = Field(default_factory=dict)
     starting_cash: float = 10_000.0
     description: str | None = None
 
@@ -22,6 +23,11 @@ class BotCreate(BaseModel):
         if v not in STRATEGY_MAP:
             raise ValueError(f"Unknown strategy '{v}'. Available: {list(STRATEGY_MAP.keys())}")
         return v
+
+    @model_validator(mode="after")
+    def validate_parameters(self) -> "BotCreate":
+        self.params = normalize_strategy_params(self.strategy_key, self.params)
+        return self
 
 
 class BotResponse(BaseModel):
@@ -68,9 +74,9 @@ class PlatformStatsResponse(BaseModel):
 class RunArenaRequest(BaseModel):
     bot_ids: list[str]
     symbol: str
-    num_candles: int = 100
-    start_price: float = 100.0
-    starting_cash: float = 10_000.0
+    num_candles: int = Field(default=100, ge=2, le=1000)
+    start_price: float = Field(default=100.0, gt=0, le=1_000_000_000, allow_inf_nan=False)
+    starting_cash: float = Field(default=10_000.0, gt=0, le=1_000_000_000_000, allow_inf_nan=False)
     data_source: Literal["mock", "live"] = "mock"
     timeframe: Literal["1h", "4h", "1d"] = "1d"
     bot_symbols: dict[str, str] = {}
@@ -79,9 +85,9 @@ class RunArenaRequest(BaseModel):
 
 class BacktestRequest(BaseModel):
     symbol: str = "BTC/USDT"
-    num_candles: int = 100
-    start_price: float = 50_000.0
-    starting_cash: float = 10_000.0
+    num_candles: int = Field(default=100, ge=2, le=1000)
+    start_price: float = Field(default=50_000.0, gt=0, le=1_000_000_000, allow_inf_nan=False)
+    starting_cash: float = Field(default=10_000.0, gt=0, le=1_000_000_000_000, allow_inf_nan=False)
     data_source: Literal["mock", "live"] = "mock"
     timeframe: Literal["1h", "4h", "1d"] = "1d"
     seed: int | None = None
@@ -148,8 +154,15 @@ class InitTokensRequest(BaseModel):
 
 class DistributeRevenueRequest(BaseModel):
     bot_id: str
-    total_revenue: float
-    quarter: str = ""  # e.g. "2026-Q2"; auto-derived if empty
+    total_revenue: float = Field(gt=0, le=1_000_000_000_000, allow_inf_nan=False)
+    quarter: str = Field(default="", pattern=r"^(?:[0-9]{4}-Q[1-4])?$")
+
+    @field_validator("total_revenue", mode="before")
+    @classmethod
+    def reject_boolean_revenue(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("total_revenue must be a simulated cash amount")
+        return value
 
 
 class HolderPayoutResponse(BaseModel):
@@ -179,15 +192,17 @@ class TokenBalancesResponse(BaseModel):
 
 class SubmitVoteRequest(BaseModel):
     bot_id: str
-    quarter: str
-    voter_address: str
+    quarter: str = Field(pattern=r"^[0-9]{4}-Q[1-4]$")
+    # Optional legacy fields may only agree with the authenticated account and
+    # its actual holdings; the server never uses them as the source of truth.
+    voter_address: str | None = None
     vote: Literal["satisfied", "unsatisfied"]
-    token_weight: float
+    token_weight: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class ClosePollRequest(BaseModel):
     bot_id: str
-    quarter: str
+    quarter: str = Field(pattern=r"^[0-9]{4}-Q[1-4]$")
 
 
 class PollResultResponse(BaseModel):
@@ -250,7 +265,14 @@ class LeaderboardEntryResponse(BaseModel):
 
 class PurchaseTokensRequest(BaseModel):
     bot_id: str
-    amount: float  # number of RST tokens to buy
+    amount: int = Field(gt=0, le=1_000_000)  # whole simulated RST tokens
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def reject_boolean_amount(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("amount must be a token quantity")
+        return value
 
 
 class HoldingResponse(BaseModel):
@@ -268,7 +290,15 @@ class MyHoldingsResponse(BaseModel):
 
 class SellTokensRequest(BaseModel):
     bot_id: str
-    amount: float  # number of RST tokens to sell
+    # Existing local ledgers may contain fractional tokens from older versions.
+    amount: float = Field(gt=0, le=1_000_000, allow_inf_nan=False)
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def reject_boolean_amount(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("amount must be a token quantity")
+        return value
 
 
 class EarningPayoutResponse(BaseModel):

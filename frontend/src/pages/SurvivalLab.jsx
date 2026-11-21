@@ -4,7 +4,9 @@ import {
   Tooltip, XAxis, YAxis,
 } from "recharts";
 import { authHeaders } from "../auth.js";
+import { buildExperimentBrief } from "../experimentBrief.js";
 import LabRobot from "../components/LabRobot.jsx";
+import EvidenceTrail from "../components/EvidenceTrail.jsx";
 import SyntheticWorlds from "../components/SyntheticWorlds.jsx";
 import ShockLandscape from "../components/ShockLandscape.jsx";
 import PassportReplay from "../components/PassportReplay.jsx";
@@ -107,10 +109,11 @@ async function runLab(payload, signal) {
 }
 
 function Slider({ id, label, value, min, max, step = 1, suffix, description, onChange }) {
+  const spokenUnit = suffix === "%" ? "percent" : suffix === " bps" ? "basis points" : (suffix ?? "").trim();
   return (
     <div className="lab-slider">
       <div className="lab-control-label"><label htmlFor={id}>{label}</label><output htmlFor={id}>{value}{suffix}</output></div>
-      <input id={id} type="range" min={min} max={max} step={step} value={value} aria-describedby={`${id}-help`} onChange={(event) => onChange(Number(event.target.value))} />
+      <input id={id} type="range" min={min} max={max} step={step} value={value} aria-valuetext={`${value}${spokenUnit ? ` ${spokenUnit}` : ""}`} aria-describedby={`${id}-help`} onChange={(event) => onChange(Number(event.target.value))} />
       <p id={`${id}-help`}>{description}</p>
     </div>
   );
@@ -118,7 +121,7 @@ function Slider({ id, label, value, min, max, step = 1, suffix, description, onC
 
 function Legend({ guarded }) {
   return (
-    <div className="lab-chart-legend" aria-label="Chart legend">
+    <div className="lab-chart-legend" role="group" aria-label="Chart legend">
       <span><i className="lab-key baseline" /> Baseline bot</span>
       <span><i className="lab-key shock" /> Scenario bot</span>
       {guarded && <span><i className="lab-key guarded" /> Scenario + guard</span>}
@@ -150,14 +153,17 @@ export default function SurvivalLab() {
   const [landscapeRunning, setLandscapeRunning] = useState(false);
   const [passportRunning, setPassportRunning] = useState(false);
   const [passportComparison, setPassportComparison] = useState(null);
+  const [briefError, setBriefError] = useState("");
   const [error, setError] = useState("");
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [replayMode, setReplayMode] = useState("shock");
   const [replayGuarded, setReplayGuarded] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [navigationTarget, setNavigationTarget] = useState(null);
   const [loadedNotice, setLoadedNotice] = useState(null);
   const passportAbortRef = useRef(null);
+  const recorderRef = useRef(null);
 
   useEffect(() => () => passportAbortRef.current?.abort(), []);
 
@@ -176,7 +182,8 @@ export default function SurvivalLab() {
     if (playing && cursor >= lastIndex) setPlaying(false);
   }, [playing, cursor, lastIndex]);
 
-  useEffect(() => { setSelectedEvent(null); }, [cursor, replayMode, replayGuarded, results]);
+  useEffect(() => { setSelectedEvent(null); setNavigationTarget(null); }, [results]);
+  useEffect(() => { setBriefError(""); }, [results]);
 
   const timeline = useMemo(() => {
     if (!results) return [];
@@ -197,12 +204,19 @@ export default function SurvivalLab() {
   const currentEvents = displayedPath?.events.filter((event) => event.candle_index === cursor) ?? [];
   const currentSignal = currentEvents.find((event) => event.event_type === "signal");
   const robotAction = currentSignal?.action ?? "READY";
-  const detailEvent = selectedEvent ?? currentEvents.find((event) => event.event_type === "signal") ?? currentEvents[0];
+  const detailEvent = currentEvents.includes(selectedEvent) ? selectedEvent : currentEvents.find((event) => event.event_type === "signal") ?? currentEvents[0];
   const shockRun = results?.shock;
   const guarded = shockRun?.guarded;
+  const shockIndex = shockRun?.scenario.shock_index;
+  const hasShock = shockRun?.scenario.shock_pct > 0 && Number.isInteger(shockIndex) && shockIndex >= 0 && shockIndex < shockRun.candles.length;
+  const configuredShockIndex = inputs.shock_index ?? Math.max(1, Math.floor(inputs.num_candles * 2 / 3));
   const controlId = "survival-lab";
   const chartData = useMemo(() => timeline.slice(0, cursor + 1), [timeline, cursor]);
   const chartAxis = useMemo(() => equityAxis(chartData), [chartData]);
+  const chartPoint = timeline[cursor];
+  const navigationNotice = navigationTarget && replayMode === "shock" && replayGuarded === Boolean(guarded) &&
+    cursor === navigationTarget.candleIndex && (!navigationTarget.event || detailEvent === navigationTarget.event)
+    ? `Opened ${navigationTarget.label} at candle ${cursor + 1} in the tested ${guarded ? "guarded" : "unguarded"} path.` : "";
 
   function updateInput(key, value) {
     setLoadedNotice(null);
@@ -285,6 +299,24 @@ export default function SurvivalLab() {
     setPlaying(true);
   }
 
+  function jumpToShock() {
+    if (!hasShock) return;
+    setPlaying(false);
+    setReplayMode("shock");
+    setCursor(shockIndex);
+  }
+
+  function navigateEvidence(moment) {
+    setPlaying(false);
+    setReplayMode("shock");
+    setReplayGuarded(Boolean(shockRun.guarded));
+    setCursor(moment.candleIndex);
+    setSelectedEvent(moment.event);
+    setNavigationTarget(moment);
+    recorderRef.current?.focus({ preventScroll: true });
+    recorderRef.current?.scrollIntoView({ block: "center" });
+  }
+
   function downloadPassport() {
     if (!results || !applied) return;
     const passport = {
@@ -301,6 +333,25 @@ export default function SurvivalLab() {
     link.download = `axiom-lab-${applied.strategy_key}-${String(results.shock.fingerprint).slice(0, 12)}.json`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function downloadBriefing() {
+    if (!results || !applied) return;
+    setBriefError("");
+    let url;
+    try {
+      const html = buildExperimentBrief({ request: applied, baseline: results.baseline, shock: results.shock });
+      if (typeof html !== "string") throw new Error("The briefing could not be generated.");
+      url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = `axiom-briefing-${applied.strategy_key}-${String(results.shock.fingerprint).slice(0, 12)}.html`;
+      link.click();
+    } catch (err) {
+      setBriefError(err.message || "The briefing could not be generated.");
+    } finally {
+      if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
   }
 
   return (
@@ -346,7 +397,7 @@ export default function SurvivalLab() {
           <div className="lab-control-divider" />
           <div className="lab-panel-heading"><div><span>02 / CONDITIONS</span><h3>Change the environment</h3></div></div>
           <fieldset disabled={running || passportRunning} className="lab-fieldset">
-            <Slider id={`${controlId}-shock`} label="Price shock" value={inputs.shock_pct} min={0} max={30} suffix="%" description="A hypothetical downward shock at candle 91." onChange={(value) => updateInput("shock_pct", value)} />
+            <Slider id={`${controlId}-shock`} label="Price shock" value={inputs.shock_pct} min={0} max={30} suffix="%" description={inputs.shock_pct === 0 ? "No shock will be injected." : `A hypothetical downward shock at candle ${configuredShockIndex + 1}.`} onChange={(value) => updateInput("shock_pct", value)} />
             <Slider id={`${controlId}-fee`} label="Trading fee" value={inputs.fee_bps} min={0} max={50} suffix=" bps" description="Applied to each simulated fill." onChange={(value) => updateInput("fee_bps", value)} />
             <Slider id={`${controlId}-slippage`} label="Slippage" value={inputs.slippage_bps} min={0} max={30} suffix=" bps" description="An assumed adverse price adjustment." onChange={(value) => updateInput("slippage_bps", value)} />
             <div className="lab-seed-row"><div><label htmlFor={`${controlId}-seed`}>Market seed</label><small id={`${controlId}-seed-help`} aria-live="polite">{loadedNotice ?? "Same seed, same generated market. Enter a whole number from 0 to 4,294,967,295."}</small></div><input id={`${controlId}-seed`} type="number" min="0" max="4294967295" step="1" required aria-describedby={`${controlId}-seed-help`} value={inputs.seed} onChange={(event) => updateInput("seed", event.target.value === "" ? "" : Number(event.target.value))} /></div>
@@ -389,8 +440,9 @@ export default function SurvivalLab() {
               </div>
 
               <div className="lab-chart-head"><div><span>EQUITY / SIMULATED USD</span><h4>One market. Different outcomes.</h4></div><span className="lab-chart-timestamp">{cursor + 1} / {shockRun.candles.length} CANDLES</span></div>
+              {dirty && <p className="lab-stale lab-chart-stale">Chart and results show the completed {displayedStrategy.label} run: seed {applied.seed}, {applied.shock_pct === 0 ? "no injected shock" : `${applied.shock_pct}% shock`}, {applied.fee_bps} bps fee. Run again to apply the changed controls.</p>}
               <Legend guarded={Boolean(guarded)} />
-              <div className="lab-chart" aria-label="Simulated equity curves for baseline, shocked market, buy-and-hold and optional guard">
+              <div className="lab-chart" role="img" aria-label="Simulated equity curves for the baseline, scenario, buy-and-hold, and optional guard. Use the replay slider and the current candle values below to inspect each point.">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 15, right: 8, left: 4, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.06} strokeDasharray="3 7" />
@@ -399,22 +451,30 @@ export default function SurvivalLab() {
                     <Tooltip content={<LabTooltip />} />
                     {cursor >= shockRun.scenario.shock_index && applied.shock_pct > 0 && <ReferenceLine x={shockRun.scenario.shock_index} stroke="#f2ba8c" strokeOpacity={0.7} strokeDasharray="3 5" label={{ value: "SHOCK", fill: "#f2ba8c", fontSize: 9, position: "insideTopRight" }} />}
                     <Line type="linear" dataKey="baseline" name="Baseline bot" stroke="#c7d7bd" strokeWidth={1.7} dot={false} isAnimationActive={false} />
-                    <Line type="linear" dataKey="shock" name="Scenario bot" stroke="#f28f87" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    {guarded && <Line type="linear" dataKey="guarded" name="Scenario + guard" stroke="#c8f37b" strokeWidth={2.5} dot={false} isAnimationActive={false} />}
-                    <Line type="linear" dataKey="benchmark" name="Scenario buy & hold" stroke="#7bded6" strokeWidth={1.6} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
+                    <Line type="linear" dataKey="shock" name="Scenario bot" stroke="#f28f87" strokeWidth={2} strokeDasharray="8 3" dot={false} isAnimationActive={false} />
+                    {guarded && <Line type="linear" dataKey="guarded" name="Scenario + guard" stroke="#c8f37b" strokeWidth={2.5} strokeDasharray="2 4" strokeLinecap="round" dot={false} isAnimationActive={false} />}
+                    <Line type="linear" dataKey="benchmark" name="Scenario buy & hold" stroke="#7bded6" strokeWidth={1.6} strokeDasharray="8 3 2 3" dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
 
               <div className="lab-playback">
                 <button type="button" className="lab-play" onClick={toggleReplay} aria-label={playing ? "Pause replay" : "Play replay"}>{playing ? "Ⅱ" : "▶"}</button>
-                <div className="lab-timeline-control"><label htmlFor={`${controlId}-timeline`}>Replay candle {cursor + 1} of {lastIndex + 1}</label><input id={`${controlId}-timeline`} type="range" min="0" max={lastIndex} value={cursor} onChange={(event) => { setPlaying(false); setCursor(Number(event.target.value)); }} /></div>
+                <div className="lab-timeline-control"><label htmlFor={`${controlId}-timeline`}>Replay candle {cursor + 1} of {lastIndex + 1}</label><input id={`${controlId}-timeline`} type="range" min="0" max={lastIndex} value={cursor} aria-valuetext={`Candle ${cursor + 1} of ${lastIndex + 1}`} onChange={(event) => { setPlaying(false); setCursor(Number(event.target.value)); }} /></div>
                 <div className="lab-replay-switch" role="group" aria-label="Scenario for decision recorder"><button type="button" className={replayMode === "baseline" ? "is-active" : ""} aria-pressed={replayMode === "baseline"} onClick={() => setReplayMode("baseline")}>BASE</button><button type="button" className={replayMode === "shock" ? "is-active" : ""} aria-pressed={replayMode === "shock"} onClick={() => setReplayMode("shock")}>TEST</button></div>
                 {guarded && <div className="lab-replay-switch" role="group" aria-label="Strategy path for decision recorder"><button type="button" className={!replayGuarded ? "is-active" : ""} aria-pressed={!replayGuarded} onClick={() => setReplayGuarded(false)}>BOT</button><button type="button" className={replayGuarded ? "is-active" : ""} aria-pressed={replayGuarded} onClick={() => setReplayGuarded(true)}>GUARD</button></div>}
               </div>
+              <div className="lab-shock-navigation">
+                <button type="button" onClick={jumpToShock} disabled={!hasShock} aria-describedby={`${controlId}-shock-jump-help`}><span aria-hidden="true">↗</span> Jump to shock {hasShock && <strong>CANDLE {shockIndex + 1}</strong>}</button>
+                <p id={`${controlId}-shock-jump-help`}>{hasShock ? `Pauses at candle ${shockIndex + 1} in the tested scenario.` : "This completed run has no injected shock."}</p>
+              </div>
+              <div className="lab-candle-values" role="group" aria-label={`Simulated equity at replay candle ${cursor + 1}`}>
+                <span>CURRENT CANDLE / {cursor + 1}</span>
+                <dl><div><dt>Baseline bot</dt><dd>{money(chartPoint?.baseline)}</dd></div><div><dt>Scenario bot</dt><dd>{money(chartPoint?.shock)}</dd></div>{guarded && <div><dt>Scenario + guard</dt><dd>{money(chartPoint?.guarded)}</dd></div>}<div><dt>Scenario buy &amp; hold</dt><dd>{money(chartPoint?.benchmark)}</dd></div></dl>
+              </div>
               <p className="lab-chart-note">Curves reveal as you replay. Buy &amp; hold uses all starting cash; bot buys are capped at {applied.max_position_pct}% of equity at execution, so they are not risk-matched. The guard pauses new buys and does not guarantee protection.</p>
 
-              <div className="lab-metrics-heading">FINAL RESULTS / END OF RUN <span>Replay candle: {cursor + 1}</span></div>
+              <div className="lab-metrics-heading">FINAL RESULTS / END OF {dirty ? "PREVIOUS " : ""}RUN <span>Replay candle: {cursor + 1}</span></div>
               <div className="lab-metrics">
                 <ResultMetric label="BASELINE BOT RETURN" value={pct(results.baseline.unguarded.total_return_pct)} sub="Same seed, no injected shock" />
                 <ResultMetric label="SCENARIO BOT RETURN" value={pct(shockRun.unguarded.total_return_pct)} sub="Without the drawdown guard" />
@@ -424,8 +484,9 @@ export default function SurvivalLab() {
                 <ResultMetric label="SIMULATED FRICTION" value={money(Number(shockRun.unguarded.total_fees) + Number(shockRun.unguarded.total_slippage_cost))} sub="Fees + slippage for scenario bot" />
               </div>
 
-              <section className="lab-recorder">
-                <div className="lab-subhead"><div><span>DECISION RECORDER / {replayMode === "shock" ? "SCENARIO" : "BASELINE"} / {replayGuarded && guarded ? "GUARDED" : "UNGUARDED"}</span><h4>Inside the strategy</h4></div><span>CANDLE {cursor + 1}</span></div>
+              <section className="lab-recorder" ref={recorderRef} tabIndex={-1} aria-labelledby="lab-recorder-title">
+                <div className="lab-subhead"><div><span>DECISION RECORDER / {replayMode === "shock" ? "SCENARIO" : "BASELINE"} / {replayGuarded && guarded ? "GUARDED" : "UNGUARDED"}</span><h4 id="lab-recorder-title">Inside the strategy</h4></div><span>CANDLE {cursor + 1}</span></div>
+                <p className="lab-navigation-notice" role="status" aria-live="polite">{navigationNotice}</p>
                 <div className="lab-recorder-grid">
                   <div className="lab-recorder-context"><span>CANDLE CLOSE</span><strong>{money(currentCandle?.close)}</strong><small>Synthetic price · {displayedRun.scenario.symbol}</small></div>
                   <div className="lab-recorder-content">
@@ -438,17 +499,19 @@ export default function SurvivalLab() {
                   </div>
                 </div>
               </section>
+              <EvidenceTrail run={shockRun} onNavigate={navigateEvidence} />
             </>
           )}
         </div>
       </div>
 
-      {results && <SyntheticWorlds key={shockRun.fingerprint} scenario={applied} experimentRunning={running || landscapeRunning || passportRunning} onBusyChange={setWorldsRunning} onSelectSeed={loadWorldSeed} />}
-      {results && <ShockLandscape key={shockRun.fingerprint} scenario={applied} otherBusy={running || worldsRunning || passportRunning} onBusyChange={setLandscapeRunning} onSelectCell={loadLandscapeCell} />}
+      {results && <SyntheticWorlds key={`worlds-${shockRun.fingerprint}`} scenario={applied} experimentRunning={running || landscapeRunning || passportRunning} onBusyChange={setWorldsRunning} onSelectSeed={loadWorldSeed} />}
+      {results && <ShockLandscape key={`landscape-${shockRun.fingerprint}`} scenario={applied} otherBusy={running || worldsRunning || passportRunning} onBusyChange={setLandscapeRunning} onSelectCell={loadLandscapeCell} />}
 
       {results && (
         <section className="lab-passport">
-          <div className="lab-passport-heading"><div><span>06 / REPRODUCIBILITY PASSPORT</span><h2>A result you can inspect.</h2><p>This passport captures the single experiment; Synthetic Worlds and Shock Landscape are separate calculations.</p></div><button type="button" className="lab-export" onClick={downloadPassport}>Download JSON <span aria-hidden="true">↓</span></button></div>
+          <div className="lab-passport-heading"><div><span>06 / REPRODUCIBILITY PASSPORT</span><h2>A result you can inspect.</h2><p>These files cover the last completed synthetic run. Synthetic Worlds and Shock Landscape are separate calculations. Open the briefing HTML to print it to PDF.</p></div><div className="lab-passport-actions"><button type="button" className="lab-export" onClick={downloadPassport}>Download JSON <span aria-hidden="true">↓</span></button><button type="button" className="lab-export" onClick={downloadBriefing}>Download briefing <span aria-hidden="true">↓</span></button></div></div>
+          {briefError && <p className="lab-error" role="alert">{briefError}</p>}
           <div className="lab-passport-grid">
             <div><span>STRATEGY</span><strong>{displayedStrategy.label}</strong><small>{displayedStrategy.callsign} · rule-based</small></div>
             <div><span>MARKET</span><strong>Synthetic · {shockRun.scenario.candle_count} candles</strong><small>Seed {shockRun.scenario.seed}</small></div>

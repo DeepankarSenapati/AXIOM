@@ -1,41 +1,45 @@
 # AXIOM Architecture
 
 ## Core Concept
-- Bot-only exchange: only algorithms place orders, no humans
-- Each bot's revenue is tokenized: 70% public / 15% tech company / 15% governance company
-- Governance is progressive: centralised → democratic if performance fails
-- Every trade logged immutably for full transparency
+- Local simulation: built-in algorithms produce decisions; there are no real orders
+- User-entered simulated revenue is allocated 70% public / 15% tech / 15% governance after the platform fee
+- The intended design explores progressive governance; the current stages are indicators and do not transfer control
+- Trade records, if stored, must be append-only. The current backtest API does not persist individual trades or provide an immutable audit
 
 ## The BotRunner (most important class)
 - Takes a strategy config + market data stream
-- Feeds data ONE candle at a time (strategy never knows if live or historical)
-- Records every decision: BUY / SELL / HOLD + timestamp + price + reason
+- Feeds only the current and earlier candles to a strategy; do not expose future candles
+- Returns each decision in memory: BUY / SELL / HOLD + timestamp + price + reason
 - Tracks portfolio: cash, positions, PnL
-- Stateless between runs — same input always produces same output
+- Use a fresh strategy for each run; seeded inputs and the same implementation are reproducible
 
 ## BaseStrategy Contract (THE LAW)
 ```python
 class BaseStrategy:
-    def on_candle(self, candle: Candle, portfolio: Portfolio) -> Action:
-        # ONLY sees current + past candles. Never future. Never knows if backtest.
+    def on_candle(self, candles: list[Candle], portfolio: Portfolio) -> Action:
+        # ONLY sees current + past candles. Never future.
         raise NotImplementedError
 ```
 All bots MUST inherit BaseStrategy. No exceptions.
 
 ## Token Model (Phase 1: SQLite simulation)
 - Each bot: 1,000,000 Revenue Share Tokens (RST) total
-- 700,000 → public pool | 150,000 → tech wallet | 150,000 → governance wallet
-- Profit split happens automatically via Distributor, proportional to RST held
+- 700,000 → public pool | 150,000 → tech placeholder | 150,000 → governance placeholder
+- Distributor allocates manually entered simulated revenue proportional to holdings; placeholder allocations do not credit company user wallets
 - No real blockchain until Phase 2
 
 ## Governance Stages
-| Stage | Trigger | Control |
+| Stage | Trigger | Current behavior |
 |-------|---------|---------|
-| 1 - Normal | Default | Governance company |
-| 2 - Review | Satisfaction < 50% for 2 consecutive quarters | Governance on notice, audit required |
-| 3 - Community | Satisfaction < 50% for 4 consecutive quarters | Direct token-holder control |
+| 1 - Normal | Default | Normal indicator |
+| 2 - Review | Satisfaction < 50% for 2 consecutive quarters | Review indicator; an audit can be recorded |
+| 3 - Community | Satisfaction < 50% for 4 consecutive quarters | Community indicator only; no control transfer |
 
-Transitions are AUTOMATIC. No manual override.
+The indicator is derived automatically from valid, consecutive closed polls;
+there is no manual override. Votes use the
+account balance at vote time, but transferable tokens can be counted again;
+the model is not secure or binding governance. There is no separate immutable
+transition log.
 
 ## Module Responsibilities
 | Module | Does | Does NOT |
@@ -48,11 +52,9 @@ Transitions are AUTOMATIC. No manual override.
 
 ## Data Flow
 ```
-MarketFeed → BotRunner → TradeLog (append-only)
-                ↓
-           Distributor → TokenLedger
-                ↓
-         Governance votes → StageManager
+MarketFeed → BotRunner → in-memory decision records → Backtester → stored summary
+User-entered revenue → Distributor → simulated allocations and wallet credits
+Governance votes → StageManager → derived stage indicator
 ```
 
 ## All constants live in config.py

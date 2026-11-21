@@ -54,6 +54,8 @@ class TokenLedger:
         from_address: str,
         to_address: str,
         amount: float,
+        *,
+        commit: bool = True,
     ) -> None:
         from_row = (
             self.db.query(DBToken)
@@ -87,4 +89,5 @@ class TokenLedger:
         else:
             to_row.balance += amount
 
-        self.db.commit()
+        if commit:
+            self.db.commit()

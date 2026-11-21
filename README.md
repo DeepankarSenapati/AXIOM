@@ -48,9 +48,14 @@ AXIOM is a platform where:
 - **Decisions can be inspected.** Survival Lab returns a per-candle event trace
   and downloadable JSON for the current experiment. This prototype does not
   provide an independently verified or tamper-proof trade audit.
-- **Revenue is automatically split.** 70% to public RST holders, 15% to the tech company, 15% to the governance company. AXIOM retains a 2% platform fee before the split.
-- **Governance escalates automatically.** If token holder satisfaction stays below 50% for two consecutive quarters, the governance company is placed on notice. Four bad quarters triggers direct community control.
-- **Backtests are blind.** A strategy never knows whether it is running against historical data or a live feed — it only ever sees candles up to the current moment.
+- **Entered revenue is split in the simulation.** The model records a 2%
+  platform fee and allocates the remainder across public, tech and governance
+  pools. Placeholder-pool allocations do not credit a user's wallet.
+- **Governance displays an escalation indicator.** Consecutive low-satisfaction
+  quarters change the simulated stage. This prototype does not transfer control
+  or implement binding governance.
+- **Strategies receive only the current and earlier candles.** This does not
+  prevent overfitting or make a simulated result evidence of future returns.
 
 ---
 
@@ -59,7 +64,7 @@ AXIOM is a platform where:
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy 2, Pydantic v2, SQLite |
-| Frontend | React 18, Vite, TailwindCSS, React Router v6, Recharts |
+| Frontend | React 18, Vite, TailwindCSS, React Router v7, Recharts |
 | Market Data | CCXT (Binance public API), yfinance (NSE India), MockMarketFeed |
 | Auth | JWT (HS256), bcrypt password hashing |
 | Testing | pytest |
@@ -71,7 +76,7 @@ AXIOM is a platform where:
 ### Prerequisites
 
 - Python 3.11 or 3.12
-- Node.js 20.19+ or 22.12+ (as required by the installed Vite version)
+- Node.js 20.19+ within the 20.x line, or 22.12+ (as required by Vite)
 
 ### 1. Install backend dependencies
 
@@ -132,16 +137,18 @@ pytest tests/ -v
 
 This is the complete end-to-end path through the platform, in order.
 
-### Step 1 — Register users
+### Step 1 — Sign in to the local demo
 
-Register at least one user of each role via `POST /auth/register`:
+On a fresh local database the app seeds one demo account for each role; use
+**Explore demo credentials** on the sign-in screen. Public registration is
+limited to token holders. Privileged demo roles use the seeded accounts.
 
 | Role | What they do |
 |---|---|
 | `admin` | Approves bots, views platform revenue |
-| `tech_company` | Submits trading bots, earns 15% of distributions |
+| `tech_company` | Submits trading bots; a placeholder pool receives the modeled tech allocation |
 | `governance_company` | Oversees bots, submits audit reports, manages voting |
-| `token_holder` | Buys RST tokens, votes, earns 70% share of distributions |
+| `token_holder` | Buys RST tokens, votes, and receives a proportional simulated public-pool payout |
 
 Each new user gets **$10,000 simulated wallet balance** on creation.
 
@@ -165,7 +172,7 @@ Navigate to **Bot Arena** → Single Bot Backtest or Arena (multiple bots).
 
 Options:
 - **Symbol**: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT (Binance) or 12 NSE India symbols
-- **Data source**: `mock` (deterministic random price walk) or `live` (real Binance/NSE data)
+- **Data source**: `mock` (random price walk, reproducible when a seed is supplied through the API) or `live` (historical Binance/NSE data)
 - **Candles**: number of OHLCV bars to replay (10–1000)
 - **Starting cash**: simulated portfolio size (default $10,000)
 
@@ -178,7 +185,9 @@ After running, you see:
 
 ### Step 5 — Initialize tokens (admin or tech_company)
 
-`POST /tokenomics/init` with `bot_id`. This mints **1,000,000 RST** and allocates:
+Sign in as admin, open **Tokenomics**, and select **Initialize Tokens** on the
+bot's card. Alternatively, an admin or the owning tech company can call
+`POST /tokenomics/init` with `bot_id`. This creates **1,000,000 simulated RST**:
 
 ```
 700,000 RST → public_pool   (available for investors to buy)
@@ -192,15 +201,18 @@ Cost: 1 RST = $0.01 (simulated).
 
 Navigate to **Market Dashboard** → click a bot card → Buy button.
 
-- Each RST costs $0.01
+- Each RST costs $0.01; new purchases use whole positive tokens
 - Purchase deducts from wallet balance
 - Tokens move from `public_pool` to the investor's address in the `tokens` table
 
 ### Step 7 — Distribute revenue (admin or governance_company)
 
-Navigate to **Tokenomics** → Distribute Revenue → enter bot ID, revenue amount, quarter.
+Sign in as admin, open **Tokenomics**, and enter a revenue amount on the bot's
+card. This is user-entered simulated revenue, not revenue calculated from the
+backtest. The screen uses the current UTC quarter; an admin or governance
+company can also supply a quarter through `POST /tokenomics/distribute`.
 
-The distributor applies this formula:
+Before rounding, the distributor targets this split:
 
 ```
 distributable = total_revenue × (1 − PLATFORM_FEE)
@@ -211,7 +223,14 @@ tech_share    = distributable × 0.15
 gov_share     = distributable × 0.15
 ```
 
-Each real investor receives:
+New simulated distributions allocate whole cents by largest remainder and
+split each pool among holders to 0.0001 cash units. Remainder ties use a fixed
+pool order and then holder-address order. Historical events are not rewritten.
+The 2% platform fee is rounded to cents before allocating the pools.
+The `public_pool`, `tech_wallet`, and `gov_wallet` are placeholders; their
+recorded allocations do not credit a registered user's wallet.
+
+Each registered holder's approximate pre-rounding share is:
 ```
 payout = public_share × (investor_rst_balance / total_public_rst)
 ```
@@ -233,25 +252,31 @@ proceeds = tokens_sold × RST_PRICE × (1 − EXIT_FEE)
          = tokens_sold × 0.01 × 0.98
 ```
 
-The 2% exit fee is retained by the platform. Tokens return to `public_pool`.
+The simulated 2% exit fee is deducted from proceeds; the platform-revenue
+dashboard does not include exit fees. Tokens return to `public_pool`.
 
-### Step 10 — Submit satisfaction votes (governance_company or token_holders)
+### Step 10 — Submit satisfaction votes
 
 Navigate to **Governance** → select a bot → Submit Vote.
 
-- Voter address auto-fills from logged-in user email
-- Token weight auto-fills from actual RST holdings for that bot
+- The signed-in account must have a positive simulated RST balance for the bot
+- The server records the account's token balance at vote time
 - Choose: Satisfied / Not Satisfied
 - Specify which quarter (e.g. `2026-Q2`)
 
 ### Step 11 — Close a poll and check stage
 
-Navigate to **Governance** → Close Poll → enter the quarter.
+Sign in as admin or governance company, then navigate to **Governance** →
+Close Poll and enter the quarter. An empty poll cannot be closed.
 
 The system:
 1. Calculates `satisfaction_rate = satisfied_weight / total_weight`
-2. Records the poll result (append-only)
-3. Checks whether a stage transition is triggered
+2. Records the poll result
+3. Calculates the current stage from the poll history
+
+The historical `stage_at_close` value is the stage before that poll's result.
+Token balances can be transferred after a vote, so the same tokens can be
+counted again; this is a simulation, not secure or binding governance.
 
 ### Step 12 — Audit a Stage 2 bot (governance_company)
 
@@ -302,7 +327,7 @@ Minimum candles required: `long_window` (20)
 
 **Signal**: Oversold / Overbought.
 
-Wilder's smoothed RSI:
+RSI using the simple mean of gains and losses in the latest period:
 ```
 delta(i) = close(i) - close(i-1)
 gain(i)  = max(delta(i), 0)
@@ -371,7 +396,7 @@ Minimum candles required: `slow + signal - 1 + 1 = 34`
 **Signal**: Price rose ≥ threshold% over window, exit on stop-loss.
 
 ```
-gain = (close(t) - close(t - window)) / close(t - window)
+gain = (close(t) - close(t - window + 1)) / close(t - window + 1)
 
 BUY  if gain ≥ threshold (default: 2%)   ← price has momentum
 SELL if held > 0 AND (close(t) - entry_price) / entry_price ≤ -stop_loss (default: -3%)
@@ -409,7 +434,7 @@ PnL(t)         = (cash(t) + position_value(t)) - starting_cash
 
 | Source | Used when | Description |
 |---|---|---|
-| `MockMarketFeed` | `data_source="mock"` | Geometric Brownian Motion random walk, deterministic with seed |
+| `MockMarketFeed` | `data_source="mock"` | Uniform ±2% random walk, reproducible with a seed |
 | `CCXTFeed` | `data_source="live"`, crypto symbol | Real OHLCV from Binance public API via CCXT (read-only, no API key) |
 | `YFinanceFeed` | `data_source="live"`, `.NS` / `^` symbol | Real OHLCV from NSE India via yfinance |
 
@@ -501,7 +526,7 @@ RST_PRICE = $0.01 per token
 
 ### Revenue Distribution Formula
 
-On each `POST /tokenomics/distribute`:
+On each `POST /tokenomics/distribute`, before rounding:
 ```
 distributable = total_revenue × (1 - PLATFORM_FEE)
               = total_revenue × 0.98        ← 2% to AXIOM platform
@@ -511,10 +536,13 @@ tech_share        = distributable × 0.15
 gov_share         = distributable × 0.15
 
 Each investor payout:
-  payout(investor) = public_pool_share × (investor_rst / total_investor_rst)
+  payout(investor) ≈ public_pool_share × (investor_rst / total_public_rst)
 ```
 
-User wallet balances are credited immediately. All events stored in `distribution_events` and `distribution_payouts` tables.
+`total_public_rst` includes the unsold `public_pool`. Allocations are rounded as
+described above. Registered holders' simulated wallets are credited; placeholder
+pool allocations are recorded without a wallet credit. Events are stored in the
+`distribution_events` and `distribution_payouts` tables.
 
 ### Token Purchase
 
@@ -542,7 +570,8 @@ tokens table: investor balance    -= tokens_to_sell
 tokens table: public_pool balance += tokens_to_sell
 ```
 
-The 2% exit fee is retained by the platform.
+The simulated exit fee is deducted from proceeds and is not included in the
+platform-revenue dashboard's distribution-fee total.
 
 ---
 
@@ -563,19 +592,20 @@ Stage 1 (Normal):
 
 Stage 1 → Stage 2 (Review):
   Trigger: satisfaction_rate < 0.50 for 2 CONSECUTIVE quarters
-  Effect: governance company placed on notice, audit required
+  Effect: simulated Review indicator; audit reports may be submitted
 
-Stage 2 → Stage 3 (Community Control):
+Stage 2 → Stage 3 (Community):
   Trigger: satisfaction_rate < 0.50 for 4 CONSECUTIVE quarters
-  Effect: direct token-holder control
+  Effect: simulated Community indicator; no actual control transfer
 
 Stage 2 / 3 → Stage 1:
   Trigger: satisfaction_rate ≥ 0.50 (community satisfied again)
   Effect: stage resets to Normal
 ```
 
-Transitions are **automatic** — evaluated on every `POST /governance/poll/close`.
-Transition history is stored immutably.
+The current indicator is derived from closed poll history. Missing or empty
+quarters break a failed streak. There is no separate immutable transition log,
+and the SQLite records are not tamper-proof.
 
 ### Audit Reports (Stage 2+)
 
@@ -594,9 +624,9 @@ Stored in `governance_audits` table, visible per bot in the Governance page.
 | Role | Permissions |
 |---|---|
 | `admin` | Approve/reject bots, view all users, view platform revenue |
-| `tech_company` | Submit bots, view own earnings dashboard, run backtests |
-| `governance_company` | Submit votes, close polls, submit audit reports, run backtests |
-| `token_holder` | Buy/sell RST, vote, view own portfolio and earnings, run backtests |
+| `tech_company` | Submit bots, view modeled tech-pool allocations, run backtests |
+| `governance_company` | Close polls, submit audit reports, run backtests; vote with a positive RST balance |
+| `token_holder` | Buy/sell RST, vote with a positive RST balance, view own portfolio and earnings, run backtests |
 
 All routes requiring auth use JWT Bearer tokens. 8-hour token expiry.
 
@@ -607,8 +637,8 @@ All routes requiring auth use JWT Bearer tokens. 8-hour token expiry.
 ### Auth
 | Method | Path | Description |
 |---|---|---|
-| POST | `/auth/register` | Create account with role |
-| POST | `/auth/token` | Login, get JWT |
+| POST | `/auth/register` | Create a token-holder account |
+| POST | `/auth/login` | Login, get JWT |
 | GET | `/auth/me` | Current user profile |
 
 ### Bots
@@ -698,10 +728,12 @@ the strategy from seeing later candles in the replay, but does not prevent
 overfitting during strategy selection or parameter tuning.
 
 **Why 2% platform fee and 2% exit fee?**
-Platform fee funds AXIOM operations and prevents zero-cost revenue draining. Exit fee discourages rapid speculation and rewards long-term holders.
+These are illustrative simulation parameters. The distribution fee is recorded;
+the exit fee is deducted from simulated proceeds. Neither represents real funds.
 
 **Why progressive governance?**
-Centralised governance is efficient but creates trust risk. Pure DAO governance is slow and chaotic. The staged model delivers efficiency under good performance and democratic accountability under poor performance.
+The staged indicator illustrates one possible oversight mechanism. The prototype
+does not transfer control or demonstrate binding democratic accountability.
 
 ---
 

@@ -12,18 +12,6 @@ function StageBadge({ stage }) {
   );
 }
 
-// Compute whether a stage changed between two polls
-function stageImpact(poll, prevPoll) {
-  if (!prevPoll) return null;
-  if (poll.stage_at_close > prevPoll.stage_at_close) {
-    return { label: `↑ Stage ${prevPoll.stage_at_close} → ${poll.stage_at_close}`, cls: "text-red-400" };
-  }
-  if (poll.stage_at_close < prevPoll.stage_at_close) {
-    return { label: `↓ Stage ${prevPoll.stage_at_close} → ${poll.stage_at_close}`, cls: "text-emerald-400" };
-  }
-  return { label: "No change", cls: "text-gray-600" };
-}
-
 function PollHistoryTable({ polls }) {
   if (polls.length === 0) {
     return <p className="text-xs text-gray-500">No closed polls yet.</p>;
@@ -38,8 +26,7 @@ function PollHistoryTable({ polls }) {
             <th className="th">Yes %</th>
             <th className="th">No %</th>
             <th className="th">Result</th>
-            <th className="th">Stage at Close</th>
-            <th className="th">Stage Impact</th>
+            <th className="th">Stage Before Close</th>
             <th className="th">Closed</th>
           </tr>
         </thead>
@@ -48,7 +35,6 @@ function PollHistoryTable({ polls }) {
             const yesPct = (p.satisfaction_rate * 100).toFixed(1);
             const noPct = ((1 - p.satisfaction_rate) * 100).toFixed(1);
             const passed = p.satisfaction_rate >= 0.5;
-            const impact = stageImpact(p, polls[i - 1]);
             return (
               <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50">
                 <td className="td font-mono">{p.quarter}</td>
@@ -60,9 +46,6 @@ function PollHistoryTable({ polls }) {
                     : <span className="badge badge-red">Fail</span>}
                 </td>
                 <td className="td"><StageBadge stage={p.stage_at_close} /></td>
-                <td className={`td ${impact ? impact.cls : "text-gray-600"}`}>
-                  {impact ? impact.label : "—"}
-                </td>
                 <td className="td text-gray-500">{new Date(p.closed_at).toLocaleDateString()}</td>
               </tr>
             );
@@ -74,7 +57,11 @@ function PollHistoryTable({ polls }) {
 }
 
 const SEVERITY_COLORS = { low: "badge-green", medium: "badge-yellow", high: "badge-red" };
-const CURRENT_QUARTER = "2026-Q2";
+
+function currentQuarter() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-Q${Math.floor(now.getUTCMonth() / 3) + 1}`;
+}
 
 function BotGovernance({ bot, currentUser }) {
   const [stage, setStage] = useState(null);
@@ -83,23 +70,27 @@ function BotGovernance({ bot, currentUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [voteForm, setVoteForm] = useState({ quarter: CURRENT_QUARTER, voter_address: "", vote: "satisfied", token_weight: 1000 });
+  const [voteForm, setVoteForm] = useState(() => ({ quarter: currentQuarter(), vote: "satisfied" }));
   const [voting, setVoting] = useState(false);
   const [voteMsg, setVoteMsg] = useState(null);
+  const [holding, setHolding] = useState(null);
+  const [holdingStatus, setHoldingStatus] = useState("loading");
+  const [holdingError, setHoldingError] = useState(null);
+  const [holdingsRevision, setHoldingsRevision] = useState(0);
 
-  const [closeQuarter, setCloseQuarter] = useState(CURRENT_QUARTER);
+  const [closeQuarter, setCloseQuarter] = useState(currentQuarter);
   const [closing, setClosing] = useState(false);
   const [closeResult, setCloseResult] = useState(null);
 
-  const [auditForm, setAuditForm] = useState({ quarter: CURRENT_QUARTER, finding: "", recommendation: "", severity: "medium" });
+  const [auditForm, setAuditForm] = useState(() => ({ quarter: currentQuarter(), finding: "", recommendation: "", severity: "medium" }));
   const [submittingAudit, setSubmittingAudit] = useState(false);
   const [auditMsg, setAuditMsg] = useState(null);
 
   function fetchAll() {
     setLoading(true);
     Promise.all([
-      apiFetch(`/governance/${bot.id}/stage`).then((r) => r.json()),
-      apiFetch(`/governance/${bot.id}/polls`).then((r) => r.json()),
+      apiFetch(`/governance/${bot.id}/stage`).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+      apiFetch(`/governance/${bot.id}/polls`).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
       apiFetch(`/governance/${bot.id}/audits`).then((r) => r.ok ? r.json() : []),
     ])
       .then(([s, p, a]) => {
@@ -115,21 +106,30 @@ function BotGovernance({ bot, currentUser }) {
   useEffect(() => { fetchAll(); }, [bot.id]);
 
   useEffect(() => {
-    if (currentUser?.email) {
-      setVoteForm((f) => ({ ...f, voter_address: currentUser.email }));
+    if (!currentUser?.email) {
+      setHolding(null);
+      setHoldingStatus("error");
+      setHoldingError("Signed-in account is unavailable.");
+      return undefined;
     }
-  }, [currentUser?.email]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    apiFetch("/tokenomics/my-holdings")
-      .then((r) => r.ok ? r.json() : null)
+    const controller = new AbortController();
+    setHolding(null);
+    setHoldingStatus("loading");
+    setHoldingError(null);
+    apiFetch("/tokenomics/my-holdings", { signal: controller.signal })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
-        const holding = data?.holdings?.find((h) => h.bot_id === bot.id);
-        if (holding?.amount) setVoteForm((f) => ({ ...f, token_weight: Math.round(holding.amount) }));
+        if (!Array.isArray(data?.holdings)) throw new Error("Invalid holdings response.");
+        const entry = data.holdings.find((item) => item.bot_id === bot.id);
+        const amount = entry ? entry.amount : 0;
+        if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) throw new Error("Invalid holding amount.");
+        if (!controller.signal.aborted) { setHolding(amount); setHoldingStatus("ready"); }
       })
-      .catch(() => {});
-  }, [bot.id, currentUser]);
+      .catch((e) => {
+        if (!controller.signal.aborted) { setHoldingError(e.message); setHoldingStatus("error"); }
+      });
+    return () => controller.abort();
+  }, [bot.id, currentUser?.email, holdingsRevision]);
 
   function handleVote(e) {
     e.preventDefault();
@@ -137,17 +137,18 @@ function BotGovernance({ bot, currentUser }) {
     apiFetch("/governance/vote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bot_id: bot.id, quarter: voteForm.quarter, voter_address: voteForm.voter_address, vote: voteForm.vote, token_weight: Number(voteForm.token_weight) }),
+      body: JSON.stringify({ bot_id: bot.id, quarter: voteForm.quarter, vote: voteForm.vote }),
     })
       .then((r) => {
-        if (r.status === 204) { setVoteMsg({ ok: true, text: "Vote submitted." }); return; }
+        if (r.status === 204) { setVoteMsg({ ok: true, text: "Simulated vote submitted." }); setHoldingsRevision((value) => value + 1); return; }
         return r.json().then((d) => { throw new Error(d.detail); });
       })
       .catch((e) => setVoteMsg({ ok: false, text: e.message }))
       .finally(() => setVoting(false));
   }
 
-  function handleClosePoll() {
+  function handleClosePoll(e) {
+    e.preventDefault();
     setClosing(true); setCloseResult(null);
     apiFetch("/governance/poll/close", {
       method: "POST",
@@ -171,7 +172,7 @@ function BotGovernance({ bot, currentUser }) {
       .then((r) => r.ok ? r.json() : r.json().then((d) => { throw new Error(d.detail); }))
       .then(() => {
         setAuditMsg({ ok: true, text: "Audit report submitted." });
-        setAuditForm({ quarter: CURRENT_QUARTER, finding: "", recommendation: "", severity: "medium" });
+        setAuditForm({ quarter: currentQuarter(), finding: "", recommendation: "", severity: "medium" });
         fetchAll();
       })
       .catch((e) => setAuditMsg({ ok: false, text: e.message }))
@@ -179,6 +180,8 @@ function BotGovernance({ bot, currentUser }) {
   }
 
   const isStage2Plus = stage && stage.current_stage >= 2;
+  const canClose = currentUser?.role === "admin" || currentUser?.role === "governance_company";
+  const voteId = `vote-${bot.id}`;
 
   return (
     <div className="card space-y-4">
@@ -188,7 +191,7 @@ function BotGovernance({ bot, currentUser }) {
           <h3 className="font-semibold text-gray-100">{bot.name}</h3>
           <p className="text-xs text-gray-500">{bot.strategy_name}</p>
         </div>
-        <button onClick={fetchAll} className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs">Refresh</button>
+        <button onClick={() => { fetchAll(); setHoldingsRevision((value) => value + 1); }} className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs">Refresh</button>
       </div>
 
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
@@ -202,14 +205,14 @@ function BotGovernance({ bot, currentUser }) {
         </div>
       )}
 
-      {/* Stage 2+ alert banner */}
+      {/* Stage 2+ review banner */}
       {isStage2Plus && (
         <div className="rounded-lg border border-amber-700 bg-amber-900/20 px-4 py-3 space-y-1">
           <p className="text-sm font-semibold text-amber-400">
-            Stage {stage.current_stage} — Audit Required
+            Stage {stage.current_stage} — Simulated Review
           </p>
           <p className="text-xs text-amber-300/70">
-            This bot has failed satisfaction polls. Submit an audit report detailing findings and corrective recommendations.
+            This bot's poll history places it in a simulated review stage. You can submit findings and recommendations.
           </p>
         </div>
       )}
@@ -217,44 +220,48 @@ function BotGovernance({ bot, currentUser }) {
       {/* Submit vote */}
       <div className="border-t border-gray-800 pt-3 space-y-2">
         <h4 className="text-xs font-semibold text-gray-400">Submit Satisfaction Vote</h4>
+        <p className="text-xs text-gray-400">Voting is simulated. Weight uses your balance at vote time; transferable tokens can be counted again after transfer. Displayed holdings reflect the last refresh.</p>
         <form onSubmit={handleVote} className="grid grid-cols-2 gap-2">
           <div>
-            <label className="label">Quarter</label>
-            <input className="input" value={voteForm.quarter} onChange={(e) => setVoteForm({ ...voteForm, quarter: e.target.value })} />
+            <label className="label" htmlFor={`${voteId}-quarter`}>Quarter (UTC)</label>
+            <input id={`${voteId}-quarter`} className="input" pattern="[0-9]{4}-Q[1-4]" title="Use YYYY-Q1 through YYYY-Q4" required value={voteForm.quarter} onChange={(e) => setVoteForm({ ...voteForm, quarter: e.target.value })} />
           </div>
           <div>
-            <label className="label">Voter Address</label>
-            <input className="input" placeholder="your@email.com" value={voteForm.voter_address} onChange={(e) => setVoteForm({ ...voteForm, voter_address: e.target.value })} required />
+            <span className="label">Signed in as</span>
+            <p className="input" aria-label={`Signed in as ${currentUser?.email ?? "unavailable"}`}>{currentUser?.email ?? "Unavailable"}</p>
           </div>
           <div>
-            <label className="label">Token Weight</label>
-            <input className="input" type="number" min="1" value={voteForm.token_weight} onChange={(e) => setVoteForm({ ...voteForm, token_weight: e.target.value })} />
+            <span className="label">Current holdings for this bot</span>
+            <p className="input" role="status">{holdingStatus === "loading" ? "Loading…" : holdingStatus === "ready" ? `${holding} RST` : "Unavailable"}</p>
           </div>
           <div>
-            <label className="label">Vote</label>
-            <select className="input" value={voteForm.vote} onChange={(e) => setVoteForm({ ...voteForm, vote: e.target.value })}>
+            <label className="label" htmlFor={`${voteId}-choice`}>Vote</label>
+            <select id={`${voteId}-choice`} className="input" value={voteForm.vote} onChange={(e) => setVoteForm({ ...voteForm, vote: e.target.value })}>
               <option value="satisfied">Satisfied</option>
               <option value="unsatisfied">Not Satisfied</option>
             </select>
           </div>
           <div className="col-span-2">
-            <button type="submit" className="btn-primary text-sm" disabled={voting}>
+            <button type="submit" className="btn-primary text-sm" disabled={voting || holdingStatus !== "ready" || !(holding > 0)}>
               {voting ? "Submitting…" : "Submit Vote"}
             </button>
           </div>
         </form>
-        {voteMsg && <p className={`text-xs ${voteMsg.ok ? "text-green-400" : "text-red-400"}`}>{voteMsg.text}</p>}
+        {holdingStatus === "ready" && holding === 0 && <p className="text-xs text-gray-400">A positive RST balance for this bot is required to vote.</p>}
+        {holdingStatus === "error" && <p className="text-xs text-red-400" role="alert">Could not load holdings: {holdingError}. Use Refresh to retry.</p>}
+        {voteMsg && <p role="status" className={`text-xs ${voteMsg.ok ? "text-green-400" : "text-red-400"}`}>{voteMsg.text}</p>}
       </div>
 
       {/* Close poll */}
-      <div className="border-t border-gray-800 pt-3 space-y-2">
+      {canClose && <div className="border-t border-gray-800 pt-3 space-y-2">
         <h4 className="text-xs font-semibold text-gray-400">Close Poll</h4>
-        <div className="flex gap-2">
-          <input className="input flex-1" value={closeQuarter} onChange={(e) => setCloseQuarter(e.target.value)} placeholder="e.g. 2026-Q2" />
-          <button onClick={handleClosePoll} disabled={closing} className="btn bg-amber-700 hover:bg-amber-600 text-white text-sm">
+        <form onSubmit={handleClosePoll} className="flex gap-2">
+          <label className="sr-only" htmlFor={`${voteId}-close-quarter`}>Quarter to close</label>
+          <input id={`${voteId}-close-quarter`} className="input flex-1" pattern="[0-9]{4}-Q[1-4]" title="Use YYYY-Q1 through YYYY-Q4" required value={closeQuarter} onChange={(e) => setCloseQuarter(e.target.value)} placeholder={`e.g. ${currentQuarter()}`} />
+          <button type="submit" disabled={closing} className="btn bg-amber-700 hover:bg-amber-600 text-white text-sm">
             {closing ? "Closing…" : "Close Poll"}
           </button>
-        </div>
+        </form>
         {closeResult && !closeResult.error && (
           <div className="bg-gray-800 rounded p-3 text-xs space-y-1">
             <p className="text-gray-300 font-medium">Poll Closed — {closeResult.quarter}</p>
@@ -268,7 +275,7 @@ function BotGovernance({ bot, currentUser }) {
           </div>
         )}
         {closeResult?.error && <p className="text-xs text-red-400">{closeResult.error}</p>}
-      </div>
+      </div>}
 
       {/* Audit form — Stage 2+ only */}
       {isStage2Plus && (
@@ -348,8 +355,8 @@ export default function Governance() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch("/bots/").then((r) => r.ok ? r.json() : []),
-      apiFetch("/auth/me").then((r) => r.ok ? r.json() : null),
+      apiFetch("/bots/").then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+      apiFetch("/auth/me").then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
     ])
       .then(([b, u]) => { setBots(b); setCurrentUser(u); })
       .catch((e) => setError(e.message))
@@ -362,8 +369,7 @@ export default function Governance() {
         <p className="page-kicker">Community oversight</p>
         <h1>Governance</h1>
         <p className="page-subtitle">
-          Stage 1 Normal → Stage 2 Review (satisfaction &lt;50% for 2 quarters) → Stage 3 Community Control.
-          Transitions are automatic.
+          Stage 1 Normal → Stage 2 Review → Stage 3 Community. These are simulated indicators; Stage 3 does not transfer control.
         </p>
       </div></div>
       {loading && <p className="text-sm text-gray-500">Loading bots…</p>}

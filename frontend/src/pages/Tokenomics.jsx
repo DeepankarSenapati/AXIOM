@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { apiFetch } from "../auth.js";
 
@@ -26,8 +26,8 @@ function BalanceBar({ label, amount, total, colorClass }) {
 function DistributionResult({ result }) {
   const shares = [
     { label: "Public Pool", amount: result.public_share, color: "text-indigo-400", bg: "bg-indigo-900/30 border-indigo-800" },
-    { label: "Tech Company", amount: result.tech_share,   color: "text-emerald-400", bg: "bg-emerald-900/30 border-emerald-800" },
-    { label: "Governance",   amount: result.gov_share,    color: "text-amber-400",   bg: "bg-amber-900/30 border-amber-800" },
+    { label: "Tech Pool", amount: result.tech_share,   color: "text-emerald-400", bg: "bg-emerald-900/30 border-emerald-800" },
+    { label: "Governance Pool", amount: result.gov_share,    color: "text-amber-400",   bg: "bg-amber-900/30 border-amber-800" },
   ];
   const platformFee = result.platform_fee ?? 0;
   const distributable = result.distributable ?? result.total_revenue;
@@ -44,11 +44,12 @@ function DistributionResult({ result }) {
 
   return (
     <div className="border-t border-gray-800 pt-3 space-y-4">
-      <h4 className="text-xs font-medium text-gray-400">Distribution Result</h4>
+      <h4 className="text-xs font-medium text-gray-400">Simulated Pool Allocations</h4>
+      <p className="text-xs text-gray-400">Placeholder-pool allocations are recorded in the simulation and are not user wallet payouts.</p>
 
       {/* Platform fee line */}
       <div className="flex items-center justify-between rounded-lg bg-gray-900 border border-gray-700 px-3 py-2">
-        <span className="text-xs text-gray-400">Platform fee (2% retained by AXIOM)</span>
+        <span className="text-xs text-gray-400">Simulated platform fee (2%)</span>
         <span className="text-xs font-mono font-semibold text-rose-400">−${platformFee.toFixed(2)}</span>
       </div>
 
@@ -85,7 +86,7 @@ function DistributionResult({ result }) {
             </div>
           ))}
           <p className="text-xs text-gray-600 pt-1">
-            {result.distributions?.length ?? 0} holder payouts processed
+            {result.distributions?.length ?? 0} simulated holder allocation records
           </p>
         </div>
       </div>
@@ -95,26 +96,35 @@ function DistributionResult({ result }) {
 
 function BotTokenomics({ bot }) {
   const [balances, setBalances] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [balanceError, setBalanceError] = useState(null);
   const [error, setError] = useState(null);
   const [initializing, setInitializing] = useState(false);
   const [distributing, setDistributing] = useState(false);
   const [revenue, setRevenue] = useState(1000);
   const [distResult, setDistResult] = useState(null);
+  const balanceRequest = useRef(0);
 
   function fetchBalances() {
+    const requestId = ++balanceRequest.current;
     setLoading(true);
+    setBalanceError(null);
+    setBalances(null);
     apiFetch(`/tokenomics/${bot.id}/balances`)
-      .then((r) => { if (r.status === 404) return null; if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setBalances)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((data) => {
+        if (!data?.balances || typeof data.balances !== "object" || Array.isArray(data.balances)) throw new Error("Invalid balance response.");
+        if (requestId === balanceRequest.current) setBalances(data);
+      })
+      .catch((e) => { if (requestId === balanceRequest.current) setBalanceError(e.message); })
+      .finally(() => { if (requestId === balanceRequest.current) setLoading(false); });
   }
 
-  useEffect(() => { fetchBalances(); }, [bot.id]);
+  useEffect(() => { fetchBalances(); return () => { balanceRequest.current += 1; }; }, [bot.id]);
 
   function handleInit() {
     setInitializing(true);
+    setError(null);
     apiFetch("/tokenomics/init", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -128,6 +138,7 @@ function BotTokenomics({ bot }) {
 
   function handleDistribute() {
     setDistributing(true);
+    setError(null);
     setDistResult(null);
     apiFetch("/tokenomics/distribute", {
       method: "POST",
@@ -140,7 +151,8 @@ function BotTokenomics({ bot }) {
       .finally(() => setDistributing(false));
   }
 
-  const totalRst = balances ? Object.values(balances.balances).reduce((s, v) => s + v, 0) : 0;
+  const initialized = Boolean(balances && Object.keys(balances.balances).length > 0);
+  const totalRst = initialized ? Object.values(balances.balances).reduce((s, v) => s + v, 0) : 0;
   const COLOR_MAP = { public_pool: "bg-indigo-500", tech_wallet: "bg-emerald-500", gov_wallet: "bg-amber-500" };
 
   return (
@@ -151,12 +163,12 @@ function BotTokenomics({ bot }) {
           <p className="text-xs text-gray-500">{bot.strategy_name}</p>
         </div>
         <div className="flex gap-2">
-          {balances === null && !loading && (
+          {balances && !initialized && !loading && (
             <button onClick={handleInit} disabled={initializing} className="btn-primary text-xs">
               {initializing ? "Initializing…" : "Initialize Tokens"}
             </button>
           )}
-          {balances && (
+          {initialized && !loading && (
             <button onClick={fetchBalances} className="btn bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs">
               Refresh
             </button>
@@ -165,10 +177,11 @@ function BotTokenomics({ bot }) {
       </div>
 
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {balances === null && !loading && <p className="text-sm text-gray-500">Tokens not initialized for this bot.</p>}
+      {balanceError && <div className="text-sm text-red-400" role="alert">Could not load balances: {balanceError} <button type="button" onClick={fetchBalances} className="btn text-xs">Retry</button></div>}
+      {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+      {balances && !initialized && !loading && <p className="text-sm text-gray-500">Tokens not initialized for this bot.</p>}
 
-      {balances && (
+      {initialized && !loading && (
         <>
           <div className="space-y-2">
             {Object.entries(balances.balances).map(([holder, amount]) => (
@@ -183,7 +196,7 @@ function BotTokenomics({ bot }) {
           </div>
 
           <div className="border-t border-gray-800 pt-3 space-y-2">
-            <h4 className="text-xs font-medium text-gray-400">Distribute Revenue</h4>
+            <h4 className="text-xs font-medium text-gray-400">Simulate Revenue Distribution</h4>
             <div className="flex gap-2">
               <input
                 className="input flex-1"
@@ -224,7 +237,7 @@ export default function Tokenomics() {
         <p className="page-kicker">Revenue & allocation</p>
         <h1>Tokenomics</h1>
         <p className="page-subtitle">
-          Each bot has 1,000,000 RST — 70% public / 15% tech / 15% governance.
+          Once initialized, each bot has 1,000,000 simulated RST — 70% public / 15% tech / 15% governance.
         </p>
       </div></div>
       {loading && <p className="text-sm text-gray-500">Loading bots…</p>}

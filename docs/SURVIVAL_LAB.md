@@ -7,7 +7,7 @@ or blockchain. Figures are simulated outcomes, not predictions.
 
 ## Run it
 
-Use Python 3.11 or 3.12 and Node.js 20.19+ or 22.12+. Install Python 3.12
+Use Python 3.11 or 3.12 and Node.js 20.19+ within 20.x, or 22.12+. Install Python 3.12
 first if `python3.12 --version` is unavailable; the example below uses that
 interpreter explicitly. From a fresh checkout of `holylarp`, open two terminals:
 
@@ -22,7 +22,7 @@ python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```bash
 # Terminal 2 — from the project root
 cd frontend
-npm install --legacy-peer-deps
+npm ci
 npm run dev
 ```
 
@@ -43,7 +43,7 @@ To check the project:
 # With the virtual environment activated, from the project root
 python -m pytest tests/ -q
 cd frontend
-npm run test:passport
+npm test
 npm run build
 ```
 
@@ -51,8 +51,9 @@ npm run build
 
 1. Open **Survival Lab** and run the default RSI experiment. It compares a
    baseline and a 12% hypothetical gap on the same seeded random factors.
-2. Move the replay to candle 91. Read the bot's signal and the guard event;
-   the guard pauses new buys after the threshold, but does not force a sale.
+2. Use **Jump to shock** or the evidence trail to inspect candle 91. The
+   trail links selected recorded events to the replay, including the guard
+   trigger and blocked buy signal. The guard does not force a sale.
 3. Generate Synthetic Worlds. Review each seed, including cases in which
    the guard worsens final equity, then load one world and replay it.
 4. Generate Shock Landscape to compare a small grid of gap sizes and fees.
@@ -65,6 +66,10 @@ npm run build
    results from the file. Files are limited to 5 MiB and requests to the
    settings supported by this screen. A matching fingerprint does not prove
    the file's contents, source code, outputs, or execution are authentic.
+7. Download the standalone HTML briefing and open it in a browser to print or
+   save as PDF. It summarizes the last completed experiment, not unsaved
+   control changes or the separate Worlds and Landscape calculations. Disable
+   browser print headers and footers for a clean page if desired.
 
 The guard and strategy are not guaranteed to protect capital. Buy-and-hold
 uses all starting cash, while the bot has a position cap, so their risks are

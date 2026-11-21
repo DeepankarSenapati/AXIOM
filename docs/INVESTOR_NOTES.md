@@ -24,8 +24,9 @@ to interrogate.
 
 1. **Ask a question:** “What happens to this bot if the market gaps down?”
 2. Run the default RSI experiment. Show the baseline and shocked paths, fees,
-   drawdown and guard. Move the replay to candle 91 and open the blocked-buy
-   event so the decision is visible.
+   drawdown and guard. Use the evidence trail to open the blocked-buy event at
+   candle 91. Its shock marker is at the open, while the guard is checked at
+   the close; a pending order could fill before that guard check.
 3. Run Synthetic Worlds. Point to both better and worse guarded outcomes; load
    one seed, rerun it and match its fingerprint. Explain that the guard does
    not guarantee a loss limit.

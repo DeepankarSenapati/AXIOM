@@ -240,7 +240,7 @@ function BotProfileModal({ botId, onClose, onBuy }) {
                   {[
                     { label: "Avg Sharpe",  value: profile.avg_sharpe?.toFixed(3) ?? "—", accent: profile.avg_sharpe >= 1 ? "text-emerald-400" : profile.avg_sharpe >= 0.3 ? "text-yellow-400" : "text-red-400" },
                     { label: "Avg PnL",     value: profile.avg_pnl != null ? (profile.avg_pnl >= 0 ? `+$${fmtMoney(profile.avg_pnl)}` : `-$${fmtMoney(Math.abs(profile.avg_pnl))}`) : "—", accent: profile.avg_pnl >= 0 ? "text-emerald-400" : "text-red-400" },
-                    { label: "Best PnL",    value: profile.best_pnl != null ? `+$${fmtMoney(profile.best_pnl)}` : "—", accent: "text-emerald-400" },
+                    { label: "Best PnL",    value: profile.best_pnl != null ? `${profile.best_pnl > 0 ? "+" : profile.best_pnl < 0 ? "-" : ""}$${fmtMoney(Math.abs(profile.best_pnl))}` : "—", accent: profile.best_pnl == null || profile.best_pnl === 0 ? "text-gray-400" : profile.best_pnl > 0 ? "text-emerald-400" : "text-red-400" },
                   ].map(({ label, value, accent }) => (
                     <div key={label} className="rounded-lg bg-gray-800 border border-gray-700 p-3">
                       <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -276,8 +276,8 @@ function BotProfileModal({ botId, onClose, onBuy }) {
                           <td className="td text-gray-500">{fmtDate(run.created_at)}</td>
                           <td className="td font-mono text-gray-300">{run.symbol}</td>
                           <td className="td">
-                            <span className={`badge ${run.data_source === "live" ? "badge-green" : "bg-gray-700 text-gray-400"}`}>
-                              {run.data_source}
+                            <span className="badge bg-gray-700 text-gray-400">
+                              {run.data_source === "live" ? "historical data" : run.data_source}
                             </span>
                           </td>
                           <td className="td"><PnlText value={run.final_pnl} /></td>
@@ -293,9 +293,11 @@ function BotProfileModal({ botId, onClose, onBuy }) {
             )}
 
             {/* Buy button */}
+            {dist && !(dist.public_pool_remaining > 0) && <p className="text-xs text-gray-400">No public pool tokens are currently available.</p>}
             <div className="border-t border-gray-800 pt-4 flex gap-3">
               <button
                 onClick={() => { onBuy(profile); onClose(); }}
+                disabled={!dist || !(dist.public_pool_remaining > 0)}
                 className="btn-primary flex-1"
               >
                 Buy RST Tokens — $0.01 / token
@@ -424,7 +426,47 @@ function SellModal({ holding, onClose, onSell }) {
 // Section A — Available Bots
 // ---------------------------------------------------------------------------
 
-function AvailableBots({ bots, loading, error, onBuy, onProfile }) {
+function AvailableBotCard({ bot, onBuy, onProfile, availabilityRevision }) {
+  const [availability, setAvailability] = useState("checking");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setAvailability("checking");
+    apiFetch(`/tokenomics/${bot.id}/balances`, { signal: controller.signal })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((data) => {
+        const balances = data?.balances;
+        if (!balances || typeof balances !== "object" || Array.isArray(balances)) throw new Error("Invalid balance response.");
+        if (Object.keys(balances).length === 0) {
+          if (!controller.signal.aborted) setAvailability("uninitialized");
+          return;
+        }
+        const pool = balances.public_pool;
+        if (typeof pool !== "number" || !Number.isFinite(pool) || pool < 0) throw new Error("Invalid public pool balance.");
+        if (!controller.signal.aborted) setAvailability(pool > 0 ? "ready" : "empty");
+      })
+      .catch(() => { if (!controller.signal.aborted) setAvailability("error"); });
+    return () => controller.abort();
+  }, [bot.id, availabilityRevision]);
+
+  const message = {
+    checking: "Checking token availability…",
+    uninitialized: "Tokens are not initialized for this bot.",
+    empty: "No public pool tokens are currently available.",
+    error: "Token availability could not be loaded. Refresh to retry.",
+  }[availability];
+
+  return <div onClick={() => onProfile(bot)} className="rounded-lg border border-gray-700 bg-gray-800 p-4 space-y-3 flex flex-col cursor-pointer hover:border-indigo-600 hover:bg-gray-800/80 transition-colors">
+    <div className="flex items-center gap-2 flex-wrap"><span className="text-sm font-semibold text-gray-100 flex-1 min-w-0 truncate">{bot.name}</span><span className="badge badge-blue text-xs">{STRATEGY_LABELS[bot.strategy_key ?? bot.strategy_name] ?? bot.strategy_key ?? bot.strategy_name}</span></div>
+    <div className="flex items-center gap-2"><StatusBadge status={bot.status} /></div>
+    <div><p className="text-xs text-gray-500">RST Price</p><p className="text-sm font-mono text-gray-200">${RST_PRICE.toFixed(2)} / token</p></div>
+    <button type="button" onClick={(event) => { event.stopPropagation(); onProfile(bot); }} className="text-xs text-gray-400 text-left">View profile →</button>
+    {message && <p className="text-xs text-gray-400" role="status">{message}</p>}
+    <button type="button" onClick={(event) => { event.stopPropagation(); onBuy(bot); }} disabled={availability !== "ready"} className="btn-primary text-sm mt-auto">Buy Tokens</button>
+  </div>;
+}
+
+function AvailableBots({ bots, loading, error, onBuy, onProfile, availabilityRevision }) {
   const active = bots.filter(b => b.status === "approved" || b.status === "live");
 
   return (
@@ -437,36 +479,7 @@ function AvailableBots({ bots, loading, error, onBuy, onProfile }) {
       )}
       {active.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {active.map(bot => (
-            <div
-              key={bot.id}
-              onClick={() => onProfile(bot)}
-              className="rounded-lg border border-gray-700 bg-gray-800 p-4 space-y-3 flex flex-col cursor-pointer hover:border-indigo-600 hover:bg-gray-800/80 transition-colors"
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-gray-100 flex-1 min-w-0 truncate">
-                  {bot.name}
-                </span>
-                <span className="badge badge-blue text-xs">
-                  {STRATEGY_LABELS[bot.strategy_key ?? bot.strategy_name] ?? bot.strategy_key ?? bot.strategy_name}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge status={bot.status} />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">RST Price</p>
-                <p className="text-sm font-mono text-gray-200">${RST_PRICE.toFixed(2)} / token</p>
-              </div>
-              <p className="text-xs text-gray-600">Click to view profile →</p>
-              <button
-                onClick={e => { e.stopPropagation(); onBuy(bot); }}
-                className="btn-primary text-sm mt-auto"
-              >
-                Buy Tokens
-              </button>
-            </div>
-          ))}
+          {active.map(bot => <AvailableBotCard key={bot.id} bot={bot} onBuy={onBuy} onProfile={onProfile} availabilityRevision={availabilityRevision} />)}
         </div>
       )}
     </div>
@@ -586,10 +599,10 @@ function Wallet({ walletBalance, purchaseHistory }) {
       <div className="mb-4">
         <p className="text-xs text-gray-500 uppercase tracking-wider">Wallet Balance</p>
         <p className="text-3xl font-bold text-gray-100 font-mono">
-          ${Number(walletBalance ?? 10000).toLocaleString("en-US", {
+          {walletBalance == null ? "Unavailable" : `$${Number(walletBalance).toLocaleString("en-US", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
-          })}
+          })}`}
         </p>
         <p className="text-xs text-gray-600 mt-0.5">Simulated balance — Phase 1 MVP</p>
       </div>
@@ -654,6 +667,7 @@ export default function MarketDashboard() {
   const [purchaseHistory, setPurchaseHistory] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
   const [purchaseError, setPurchaseError] = useState(null);
+  const [availabilityRevision, setAvailabilityRevision] = useState(0);
 
   function loadHoldings() {
     apiFetch("/tokenomics/my-holdings")
@@ -687,8 +701,8 @@ export default function MarketDashboard() {
   useEffect(() => {
     apiFetch("/auth/me")
       .then(r => r.ok ? r.json() : null)
-      .then(data => setWalletBalance(data?.wallet_balance ?? 10000))
-      .catch(() => setWalletBalance(10000));
+      .then(data => setWalletBalance(data?.wallet_balance ?? null))
+      .catch(() => setWalletBalance(null));
 
     loadHoldings();
     loadEarnings();
@@ -700,6 +714,7 @@ export default function MarketDashboard() {
       const res = await apiFetch("/bots/");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBots(await res.json());
+      setAvailabilityRevision((value) => value + 1);
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -722,6 +737,7 @@ export default function MarketDashboard() {
       if (!res.ok) { setPurchaseError(data.detail ?? "Purchase failed"); return; }
       setWalletBalance(data.wallet_balance);
       loadHoldings();
+      setAvailabilityRevision((value) => value + 1);
     } catch (e) {
       setPurchaseError(e.message ?? "Network error");
       return;
@@ -748,6 +764,7 @@ export default function MarketDashboard() {
       if (!res.ok) { setPurchaseError(data.detail ?? "Sell failed"); return; }
       setWalletBalance(data.wallet_balance);
       loadHoldings();
+      setAvailabilityRevision((value) => value + 1);
     } catch (e) {
       setPurchaseError(e.message ?? "Network error");
       return;
@@ -784,6 +801,7 @@ export default function MarketDashboard() {
         error={error}
         onBuy={bot  => { setPurchaseError(null); setBuyTarget(bot); }}
         onProfile={bot => setProfileTarget(bot)}
+        availabilityRevision={availabilityRevision}
       />
 
       {purchaseError && (

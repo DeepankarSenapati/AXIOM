@@ -1,8 +1,10 @@
 # Experiment notes
 
-These observations are from the local `survival-lab-v2` synthetic generator,
-not market data or evidence of future performance. They are included to show
-how to question a strategy, including when a safeguard hurts its outcome.
+These observations were produced with `survival-lab-v2` synthetic data, not
+market data or evidence of future performance. Version `survival-lab-v3`
+adds request and strategy metadata without changing the simulated price or
+execution logic; its fingerprints intentionally differ. The observations
+show how to question a strategy, including when a safeguard hurts its outcome.
 
 ## A small, reproducible stress sweep
 

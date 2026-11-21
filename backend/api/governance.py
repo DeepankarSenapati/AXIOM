@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -10,14 +12,15 @@ from backend.api.models import (
     SubmitAuditRequest,
     SubmitVoteRequest,
 )
-from backend.auth.dependencies import get_current_user
-from backend.db.models import DBBot, DBGovernanceAudit, DBUser
+from backend.auth.dependencies import get_current_user, require_role
+from backend.db.models import DBBot, DBGovernanceAudit, DBToken, DBUser
 from backend.db.session import get_db
 from backend.governance.models import GovernanceStage, VoteSubmission
 from backend.governance.stages import StageManager
-from backend.governance.voting import DuplicateVoteError, PollAlreadyClosedError, VotingManager
+from backend.governance.voting import DuplicateVoteError, EmptyPollError, PollAlreadyClosedError, VotingManager
 
 router = APIRouter(prefix="/governance", tags=["governance"])
+_poll_manager = require_role("admin", "governance_company")
 
 _STAGE_NAMES: dict[int, str] = {
     GovernanceStage.NORMAL: "Normal",
@@ -37,20 +40,31 @@ def _get_bot(bot_id: str, db: Session) -> DBBot:
 def submit_vote(
     payload: SubmitVoteRequest,
     db: Session = Depends(get_db),
-    _: DBUser = Depends(get_current_user),
+    current_user: DBUser = Depends(get_current_user),
 ) -> None:
     _get_bot(payload.bot_id, db)
+    holding = (
+        db.query(DBToken)
+        .filter(DBToken.bot_id == payload.bot_id, DBToken.holder_address == current_user.email)
+        .first()
+    )
+    if holding is None or not math.isfinite(holding.balance) or holding.balance <= 0:
+        raise HTTPException(status_code=403, detail="A positive simulated token holding is required to vote.")
+    if payload.voter_address is not None and payload.voter_address != current_user.email:
+        raise HTTPException(status_code=422, detail="Voter address must match the signed-in account.")
+    if payload.token_weight is not None and not math.isclose(payload.token_weight, holding.balance, rel_tol=1e-12, abs_tol=1e-9):
+        raise HTTPException(status_code=422, detail="Voting weight must match the account's current simulated holding.")
     manager = VotingManager(db)
     submission = VoteSubmission(
         bot_id=payload.bot_id,
         quarter=payload.quarter,
-        voter_address=payload.voter_address,
+        voter_address=current_user.email,
         vote=payload.vote,
-        token_weight=payload.token_weight,
+        token_weight=holding.balance,
     )
     try:
         manager.submit_vote(submission)
-    except DuplicateVoteError as e:
+    except (DuplicateVoteError, PollAlreadyClosedError) as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
 
 
@@ -58,7 +72,7 @@ def submit_vote(
 def close_poll(
     payload: ClosePollRequest,
     db: Session = Depends(get_db),
-    _: DBUser = Depends(get_current_user),
+    _: DBUser = Depends(_poll_manager),
 ) -> PollResultResponse:
     _get_bot(payload.bot_id, db)
     voting = VotingManager(db)
@@ -69,6 +83,8 @@ def close_poll(
         result = voting.close_poll(payload.bot_id, payload.quarter, current_stage)
     except PollAlreadyClosedError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except EmptyPollError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     return PollResultResponse(
         bot_id=result.bot_id,
@@ -139,7 +155,7 @@ def submit_audit(
     bot_id: str,
     payload: SubmitAuditRequest,
     db: Session = Depends(get_db),
-    current_user: DBUser = Depends(get_current_user),
+    current_user: DBUser = Depends(_poll_manager),
 ) -> AuditResponse:
     _get_bot(bot_id, db)
     voting = VotingManager(db)
