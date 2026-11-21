@@ -65,6 +65,12 @@ Longer term, a human-led review could invite specialized software agents to
 propose challenges, critique assumptions and produce evidence. Their output
 would remain a hypothesis for humans to inspect, not an autonomous approval or
 trading recommendation. Only pursue this after proving the narrower workflow.
+The [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework)
+is a voluntary reference for evaluating AI systems; it does not certify this
+prototype. Research on [multi-agent debate](https://arxiv.org/abs/2502.08788)
+also warns that inconsistent evaluations make generalization difficult. Any
+future agent reviewers would need measurement against strong single-agent and
+human baselines, including failures and cost—not just a persuasive dialogue.
 
 ## Competitive reality
 

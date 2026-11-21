@@ -10,10 +10,11 @@ from backend.bots.strategies.macd import MACDStrategy
 from backend.bots.strategies.momentum import MomentumStrategy
 from backend.bots.strategies.rsi import RSIStrategy
 from backend.bots.strategies.simple_ma import SimpleMovingAverageStrategy
-from backend.bots.registry import get_strategy_defaults
+from backend.bots.registry import get_strategy_class, get_strategy_defaults
 from backend.engine.models import Action, Candle, Portfolio
 from backend.engine import survival
 import backend.config as settings
+from backend.engine.survival_data import build_synthetic_candles
 from backend.engine.survival import (
     SurvivalRequest,
     run_survival,
@@ -135,6 +136,51 @@ def test_strategy_sees_only_prefix_and_fills_at_next_open() -> None:
     assert [event.signal_index for event in fills] == [0, 1]
     assert run.final_equity == pytest.approx(1_020.0)
     assert run.trade_count == 2
+
+
+@pytest.mark.parametrize("strategy_key", ["simple_ma", "rsi", "bollinger_bands", "macd", "momentum"])
+@pytest.mark.parametrize("use_guard", [False, True], ids=["unguarded", "guarded"])
+def test_changing_future_candles_cannot_change_earlier_decisions_or_account_state(
+    strategy_key: str, use_guard: bool,
+) -> None:
+    request = request_for(
+        160, strategy_key=strategy_key, seed=42, shock_pct=30.0, shock_index=80,
+        fee_bps=100.0, slippage_bps=100.0, guard_enabled=use_guard,
+        guard_drawdown_pct=0.5, max_position_pct=100.0,
+    )
+    original = build_synthetic_candles(request)
+    split = 110
+    changed_future = [
+        candle if index < split else candle.model_copy(update={
+            "open": candle.open * 0.5, "high": candle.high * 0.5,
+            "low": candle.low * 0.5, "close": candle.close * 0.5,
+            "volume": candle.volume * 2,
+        })
+        for index, candle in enumerate(original)
+    ]
+    assert original[:split] == changed_future[:split]
+    assert all(a != b for a, b in zip(original[split:], changed_future[split:]))
+
+    strategy_type = get_strategy_class(strategy_key)
+    params = get_strategy_defaults(strategy_key)
+    first = simulate_strategy(request, original, strategy_type(symbol=original[0].symbol, **params), use_guard=use_guard)
+    second = simulate_strategy(request, changed_future, strategy_type(symbol=original[0].symbol, **params), use_guard=use_guard)
+    early_events = [event for event in first.events if event.candle_index < split]
+    assert early_events == [event for event in second.events if event.candle_index < split]
+    # Each equity point includes cash, position and close-marked drawdown too.
+    assert first.equity_curve[:split] == second.equity_curve[:split]
+    assert sum(event.event_type == "signal" for event in early_events) == split
+    assert any(event.event_type == "fill" for event in early_events)
+    if use_guard:
+        assert first.guard_trigger_index is not None and first.guard_trigger_index < split
+        assert second.guard_trigger_index == first.guard_trigger_index
+    else:
+        assert first.guard_trigger_index is None and second.guard_trigger_index is None
+    # The altered tape actually influences the later simulation; this is not
+    # merely a comparison of two runs that ignore their differing inputs.
+    assert [event for event in first.events if event.candle_index >= split] != [
+        event for event in second.events if event.candle_index >= split
+    ]
 
 
 def test_final_close_signal_expires_without_a_phantom_fill() -> None:
