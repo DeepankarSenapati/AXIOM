@@ -67,7 +67,14 @@ def test_hold_reason_mentions_required_count() -> None:
     s = _strategy(window=20)
     candles = _flat_candles(100.0, 10)
     record = s.on_candle(candles, _portfolio())
-    assert "20" in record.reason
+    assert "need 21 candles, have 10" in record.reason
+
+
+def test_hold_reason_at_exact_window_counts_current_candle() -> None:
+    s = _strategy(window=5)
+    record = s.on_candle(_flat_candles(100.0, 5), _portfolio())
+    assert record.action_type == "HOLD"
+    assert "need 6 candles, have 5" in record.reason
 
 
 def test_hold_on_exactly_window_minus_one_candles() -> None:

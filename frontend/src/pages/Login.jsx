@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { roleHome, setToken } from "../auth.js";
+import { useLocation, useNavigate } from "react-router-dom";
+import { setToken } from "../auth.js";
+import { loginDestination } from "../loginDestination.js";
 import { BrandMark } from "../components/Brand.jsx";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +28,7 @@ export default function Login() {
         return;
       }
       setToken(data.access_token);
-      navigate(roleHome(data.user.role), { replace: true });
+      navigate(loginDestination(location.state?.from, data.user.role), { replace: true });
     } catch {
       setError("Network error — is the backend running?");
     } finally {

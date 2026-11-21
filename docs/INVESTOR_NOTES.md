@@ -24,12 +24,13 @@ to interrogate.
 
 1. **Ask a question:** “What happens to this bot if the market gaps down?”
 2. Run the default RSI experiment. Show the baseline and shocked paths, fees,
-   drawdown and guard. Use the evidence trail to open the blocked-buy event at
-   candle 91. Its shock marker is at the open, while the guard is checked at
-   the close; a pending order could fill before that guard check.
-3. Run Synthetic Worlds. Point to both better and worse guarded outcomes; load
-   one seed, rerun it and match its fingerprint. Explain that the guard does
-   not guarantee a loss limit.
+   drawdown and guard. The decision comparison shows the blocked buy at candle
+   91 alongside the unguarded path's recorded next-open fill. Use the evidence
+   trail to inspect the block. The shock is at the open, while the guard is
+   checked at the close; a pending order could fill before that guard check.
+3. Set Synthetic Worlds to 12 and run it. Point to both better and worse
+   guarded outcomes; load one seed, rerun it and match its fingerprint.
+   Explain that the guard does not guarantee a loss limit.
 4. Generate Shock Landscape to compare shock and fee combinations on the same
    artificial seed. Highlight exposure before the gap so that a strategy that
    happened to hold no position is not mistaken for proven crash resilience.

@@ -37,6 +37,22 @@ If your own working copy moved the dependency file to `backend/requirements.txt`
 use that path in the `pip install -r ...` command. The committed checkout
 still contains the root `requirements.txt`.
 
+### Rehearse with an isolated demo database
+
+After installing the dependencies above, you can start both services in one
+terminal from the project root, with the Python virtual environment activated:
+
+```bash
+python scripts/demo.py
+```
+
+Open the printed loopback URL and use **Explore demo credentials**. The
+launcher creates a fresh temporary database and deletes it on normal exit;
+it does not use your existing project database. Press Ctrl+C to stop both
+services. Browser storage, downloaded exports, and the project `app.log`
+remain; if an old browser session appears, sign out and back in. The launcher
+does not install dependencies and currently supports macOS and Linux.
+
 To check the project:
 
 ```bash
@@ -53,7 +69,8 @@ npm run build
    baseline and a 12% hypothetical gap on the same seeded random factors.
 2. Use **Jump to shock** or the evidence trail to inspect candle 91. The
    trail links selected recorded events to the replay, including the guard
-   trigger and blocked buy signal. The guard does not force a sale.
+   trigger and blocked buy signal. The decision comparison shows the recorded
+   unguarded path at the same candle. The guard does not force a sale.
 3. Generate Synthetic Worlds. Review each seed, including cases in which
    the guard worsens final equity, then load one world and replay it.
 4. Generate Shock Landscape to compare a small grid of gap sizes and fees.
@@ -87,6 +104,8 @@ not matched. Results can change with the seed, parameters, model, and costs.
 - Buy signals request a configured fraction of cash; execution separately
   enforces the position cap. The guard, when enabled, permanently pauses new
   buys after the drawdown threshold is met at a close. Sells remain possible.
+  Drawdown is calculated from close-marked equity, so it can miss losses within
+  a candle, including an open gap that recovers by the close.
 - Buy-and-hold enters at the first eligible next open using the same entry
   costs, but uses all available cash. No strategy is risk-matched to it.
 - Synthetic Worlds runs up to 12 consecutive seeds with at most 240 candles

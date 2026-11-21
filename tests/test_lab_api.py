@@ -195,17 +195,17 @@ def test_http_run_echoes_the_normalized_request_not_raw_values() -> None:
 def test_paired_fingerprints_both_change_with_engine_version(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {"strategy_key": "momentum", "num_candles": 40, "seed": 123,
                "shock_pct": 20, "shock_index": 25}
-    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v2")
-    status_v2, v2 = post_json("/arena/lab/paired", payload)
     monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v3")
     status_v3, v3 = post_json("/arena/lab/paired", payload)
-    assert status_v2 == status_v3 == 200
+    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v4")
+    status_v4, v4 = post_json("/arena/lab/paired", payload)
+    assert status_v3 == status_v4 == 200
     for side in ("baseline", "shock"):
-        assert v2[side]["request"] == v3[side]["request"]
-        assert v2[side]["candles"] == v3[side]["candles"]
-        assert v2[side]["engine_version"] == "survival-lab-v2"
+        assert v3[side]["request"] == v4[side]["request"]
+        assert v3[side]["candles"] == v4[side]["candles"]
         assert v3[side]["engine_version"] == "survival-lab-v3"
-        assert v2[side]["fingerprint"] != v3[side]["fingerprint"]
+        assert v4[side]["engine_version"] == "survival-lab-v4"
+        assert v3[side]["fingerprint"] != v4[side]["fingerprint"]
 
 
 def test_paired_http_validates_the_scenario() -> None:

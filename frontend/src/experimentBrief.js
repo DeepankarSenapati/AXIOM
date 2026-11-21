@@ -2,6 +2,8 @@
 // Input: an already completed Survival Lab run ({ request, baseline, shock }).
 // Output: a complete standalone HTML string. No I/O, no network, no randomness.
 
+import { formatPercent } from "./percentFormatting.js";
+
 const STRATEGY_LABELS = {
   simple_ma: "Simple moving average",
   rsi: "RSI",
@@ -54,10 +56,6 @@ const esc = escapeHtml;
 function fmt(value, digits) {
   const out = value.toFixed(digits);
   return out === "-0" || /^-0\.0*$/.test(out) ? out.slice(1) : out;
-}
-
-function pct(value, digits = 2) {
-  return `${value > 0 ? "+" : ""}${fmt(value, digits)}%`;
 }
 
 function money(value) {
@@ -316,16 +314,16 @@ export function buildExperimentBrief({ request, baseline, shock } = {}) {
 
   const metric = (label, value, sub) => `<div class="m"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(sub)}</small></div>`;
   const metrics = [
-    metric("Baseline return", pct(baseline.unguarded.total_return_pct), "Same seed, no shock, unguarded"),
-    metric(`${scenarioLabel} return`, pct(shock.unguarded.total_return_pct), hasShock ? "Unguarded bot after shock" : "No shock in this run"),
+    metric("Baseline return", formatPercent(baseline.unguarded.total_return_pct, true), "Same seed, no shock, unguarded"),
+    metric(`${scenarioLabel} return`, formatPercent(shock.unguarded.total_return_pct, true), hasShock ? "Unguarded bot after shock" : "No shock in this run"),
     guardedRun
-      ? metric(`${scenarioLabel} + guard return`, pct(guardedRun.total_return_pct), hasShock ? "Guarded bot after shock" : "Guarded bot, no shock")
+      ? metric(`${scenarioLabel} + guard return`, formatPercent(guardedRun.total_return_pct, true), hasShock ? "Guarded bot after shock" : "Guarded bot, no shock")
       : metric(`${scenarioLabel} + guard return`, "No guard", "Guard was not enabled"),
-    metric(`${scenarioLabel} buy-and-hold`, pct(shock.benchmark.total_return_pct), "All cash invested; not risk-matched"),
-    metric("Max drawdown, unguarded", fmt(shock.unguarded.max_drawdown_pct, 2) + "%", hasShock ? "Shocked scenario" : "No shock"),
+    metric(`${scenarioLabel} buy-and-hold`, formatPercent(shock.benchmark.total_return_pct, true), "All cash invested; not risk-matched"),
+    metric("Max close drawdown, unguarded", formatPercent(shock.unguarded.max_drawdown_pct), hasShock ? "Shocked scenario" : "No shock"),
     guardedRun
-      ? metric("Max drawdown, guarded", fmt(guardedRun.max_drawdown_pct, 2) + "%", hasShock ? "Shocked scenario" : "No shock")
-      : metric("Max drawdown, guarded", "No guard", "Guard was not enabled"),
+      ? metric("Max close drawdown, guarded", formatPercent(guardedRun.max_drawdown_pct), hasShock ? "Shocked scenario" : "No shock")
+      : metric("Max close drawdown, guarded", "No guard", "Guard was not enabled"),
   ].join("");
 
   let triggerText = "No guard";
@@ -374,7 +372,7 @@ export function buildExperimentBrief({ request, baseline, shock } = {}) {
 <strong>All figures come from simulated, synthetic market data. They are not forecasts and not evidence of real trading.</strong>
 <ul>
 <li>Buy-and-hold invests all cash and is not risk-matched to the position-capped bot.</li>
-<li>The guard only pauses new buys; it cannot guarantee a loss limit.</li>
+<li>Drawdown uses closes and can miss intrabar losses. The guard only pauses new buys; it cannot guarantee a loss limit.</li>
 <li>Final open positions are marked to market without future exit costs.</li>
 <li>The fingerprint and engine version are not source hashes or independent proof.</li>
 </ul>

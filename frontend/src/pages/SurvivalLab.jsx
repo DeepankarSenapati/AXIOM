@@ -5,7 +5,10 @@ import {
 } from "recharts";
 import { authHeaders } from "../auth.js";
 import { buildExperimentBrief } from "../experimentBrief.js";
+import { formatPercent } from "../percentFormatting.js";
+import { parseSeedInput } from "../seedInput.js";
 import LabRobot from "../components/LabRobot.jsx";
+import DecisionComparison from "../components/DecisionComparison.jsx";
 import EvidenceTrail from "../components/EvidenceTrail.jsx";
 import SyntheticWorlds from "../components/SyntheticWorlds.jsx";
 import ShockLandscape from "../components/ShockLandscape.jsx";
@@ -37,14 +40,8 @@ const money = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
 };
-const pct = (value, showSign = true) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${showSign && n > 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
-};
-const drawdown = (value) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${n > 0 ? "−" : ""}${Math.abs(n).toFixed(2)}%` : "—";
-};
+const pct = (value) => formatPercent(value, true);
+const drawdown = (value) => typeof value === "number" ? formatPercent(-Math.abs(value)) : "—";
 const number = (value, digits = 3) => {
   const n = Number(value);
   return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: digits }) : "—";
@@ -164,8 +161,14 @@ export default function SurvivalLab() {
   const [loadedNotice, setLoadedNotice] = useState(null);
   const passportAbortRef = useRef(null);
   const recorderRef = useRef(null);
+  const seedInputRef = useRef(null);
 
   useEffect(() => () => passportAbortRef.current?.abort(), []);
+
+  const seedValidation = parseSeedInput(inputs.seed);
+  useEffect(() => {
+    seedInputRef.current?.setCustomValidity(seedValidation.error);
+  }, [seedValidation.error]);
 
   const dirty = Boolean(applied && JSON.stringify(inputs) !== JSON.stringify(applied));
   const selectedStrategy = STRATEGIES.find((strategy) => strategy.key === inputs.strategy_key) ?? STRATEGIES[0];
@@ -243,14 +246,20 @@ export default function SurvivalLab() {
 
   async function handleRun(event) {
     event.preventDefault();
+    const parsedSeed = parseSeedInput(inputs.seed);
+    if (parsedSeed.error) {
+      seedInputRef.current?.setCustomValidity(parsedSeed.error);
+      seedInputRef.current?.reportValidity();
+      return;
+    }
     setRunning(true);
     setError("");
     setPlaying(false);
-    const payload = { ...inputs, seed: Number(inputs.seed) };
+    const payload = { ...inputs, seed: parsedSeed.value };
     try {
       const { baseline, shock } = await runLab(payload);
       setResults({ baseline, shock });
-      setApplied({ ...inputs });
+      setApplied({ ...payload });
       setLoadedNotice(null);
       setPassportComparison(null);
       setCursor(Math.max(0, shock.candles.length - 1));
@@ -400,10 +409,21 @@ export default function SurvivalLab() {
             <Slider id={`${controlId}-shock`} label="Price shock" value={inputs.shock_pct} min={0} max={30} suffix="%" description={inputs.shock_pct === 0 ? "No shock will be injected." : `A hypothetical downward shock at candle ${configuredShockIndex + 1}.`} onChange={(value) => updateInput("shock_pct", value)} />
             <Slider id={`${controlId}-fee`} label="Trading fee" value={inputs.fee_bps} min={0} max={50} suffix=" bps" description="Applied to each simulated fill." onChange={(value) => updateInput("fee_bps", value)} />
             <Slider id={`${controlId}-slippage`} label="Slippage" value={inputs.slippage_bps} min={0} max={30} suffix=" bps" description="An assumed adverse price adjustment." onChange={(value) => updateInput("slippage_bps", value)} />
-            <div className="lab-seed-row"><div><label htmlFor={`${controlId}-seed`}>Market seed</label><small id={`${controlId}-seed-help`} aria-live="polite">{loadedNotice ?? "Same seed, same generated market. Enter a whole number from 0 to 4,294,967,295."}</small></div><input id={`${controlId}-seed`} type="number" min="0" max="4294967295" step="1" required aria-describedby={`${controlId}-seed-help`} value={inputs.seed} onChange={(event) => updateInput("seed", event.target.value === "" ? "" : Number(event.target.value))} /></div>
+            <div className="lab-seed-row">
+              <div>
+                <label htmlFor={`${controlId}-seed`}>Market seed</label>
+                <small id={`${controlId}-seed-help`} aria-live="polite">{loadedNotice ?? "Same seed, same generated market. Enter a whole number from 0 to 4,294,967,295."}</small>
+                {seedValidation.error && <small id={`${controlId}-seed-error`} className="lab-seed-error" role="alert">{seedValidation.error}</small>}
+              </div>
+              <input ref={seedInputRef} id={`${controlId}-seed`} type="text" inputMode="numeric" pattern="[0-9]+" required aria-invalid={seedValidation.error ? true : undefined} aria-describedby={`${controlId}-seed-help${seedValidation.error ? ` ${controlId}-seed-error` : ""}`} value={inputs.seed} onChange={(event) => {
+                const parsed = parseSeedInput(event.target.value);
+                event.target.setCustomValidity(parsed.error);
+                updateInput("seed", parsed.value);
+              }} />
+            </div>
             <div className="lab-guard">
               <div className="lab-guard-top"><div><strong>Drawdown guard</strong><small>Pause new buys after a threshold.</small></div><label className="lab-switch"><input type="checkbox" checked={inputs.guard_enabled} onChange={(event) => updateInput("guard_enabled", event.target.checked)} aria-label="Enable drawdown guard" /><span /></label></div>
-              {inputs.guard_enabled && <Slider id={`${controlId}-guard`} label="Pause buys at drawdown" value={inputs.guard_drawdown_pct} min={2} max={20} suffix="%" description="The guard does not force a sell or guarantee a loss limit." onChange={(value) => updateInput("guard_drawdown_pct", value)} />}
+              {inputs.guard_enabled && <Slider id={`${controlId}-guard`} label="Pause buys at drawdown" value={inputs.guard_drawdown_pct} min={2} max={20} suffix="%" description="Checked at candle closes. The guard does not force a sell or guarantee a loss limit." onChange={(value) => updateInput("guard_drawdown_pct", value)} />}
             </div>
           </fieldset>
 
@@ -472,15 +492,15 @@ export default function SurvivalLab() {
                 <span>CURRENT CANDLE / {cursor + 1}</span>
                 <dl><div><dt>Baseline bot</dt><dd>{money(chartPoint?.baseline)}</dd></div><div><dt>Scenario bot</dt><dd>{money(chartPoint?.shock)}</dd></div>{guarded && <div><dt>Scenario + guard</dt><dd>{money(chartPoint?.guarded)}</dd></div>}<div><dt>Scenario buy &amp; hold</dt><dd>{money(chartPoint?.benchmark)}</dd></div></dl>
               </div>
-              <p className="lab-chart-note">Curves reveal as you replay. Buy &amp; hold uses all starting cash; bot buys are capped at {applied.max_position_pct}% of equity at execution, so they are not risk-matched. The guard pauses new buys and does not guarantee protection.</p>
+              <p className="lab-chart-note">Curves reveal as you replay. Buy &amp; hold uses all starting cash; bot buys are capped at {applied.max_position_pct}% of equity at execution, so they are not risk-matched. Drawdown and the guard use candle closes and can miss intrabar losses. The guard pauses new buys and does not guarantee protection.</p>
 
               <div className="lab-metrics-heading">FINAL RESULTS / END OF {dirty ? "PREVIOUS " : ""}RUN <span>Replay candle: {cursor + 1}</span></div>
               <div className="lab-metrics">
                 <ResultMetric label="BASELINE BOT RETURN" value={pct(results.baseline.unguarded.total_return_pct)} sub="Same seed, no injected shock" />
                 <ResultMetric label="SCENARIO BOT RETURN" value={pct(shockRun.unguarded.total_return_pct)} sub="Without the drawdown guard" />
                 <ResultMetric label={guarded ? "SCENARIO + GUARD" : "BUY & HOLD RETURN"} value={pct((guarded ?? shockRun.benchmark).total_return_pct)} sub={guarded ? guarded.guard_trigger_index == null ? "Guard did not trigger" : `Guard triggered at candle ${guarded.guard_trigger_index + 1}` : "Same scenario"} tone="is-accent" />
-                <ResultMetric label="BOT MAX DRAWDOWN" value={drawdown(shockRun.unguarded.max_drawdown_pct)} sub="Scenario bot · no guard" />
-                {guarded && <ResultMetric label="GUARDED MAX DRAWDOWN" value={drawdown(guarded.max_drawdown_pct)} sub="Scenario + guard" />}
+                <ResultMetric label="BOT MAX CLOSE DRAWDOWN" value={drawdown(shockRun.unguarded.max_drawdown_pct)} sub="Scenario bot · no guard" />
+                {guarded && <ResultMetric label="GUARDED MAX CLOSE DRAWDOWN" value={drawdown(guarded.max_drawdown_pct)} sub="Scenario + guard" />}
                 <ResultMetric label="SIMULATED FRICTION" value={money(Number(shockRun.unguarded.total_fees) + Number(shockRun.unguarded.total_slippage_cost))} sub="Fees + slippage for scenario bot" />
               </div>
 
@@ -499,6 +519,7 @@ export default function SurvivalLab() {
                   </div>
                 </div>
               </section>
+              <DecisionComparison run={shockRun} onInspect={navigateEvidence} />
               <EvidenceTrail run={shockRun} onNavigate={navigateEvidence} />
             </>
           )}

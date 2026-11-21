@@ -5,7 +5,11 @@ import math
 import pytest
 
 from backend.bots.strategies.base import BaseStrategy
+from backend.bots.strategies.bollinger_bands import BollingerBandsStrategy
+from backend.bots.strategies.macd import MACDStrategy
 from backend.bots.strategies.momentum import MomentumStrategy
+from backend.bots.strategies.rsi import RSIStrategy
+from backend.bots.strategies.simple_ma import SimpleMovingAverageStrategy
 from backend.bots.registry import get_strategy_defaults
 from backend.engine.models import Action, Candle, Portfolio
 from backend.engine import survival
@@ -72,6 +76,48 @@ class ScriptedStrategy(BaseStrategy):
 
 def events_of(run: object, kind: str) -> list:
     return [event for event in run.events if event.event_type == kind]
+
+
+@pytest.mark.parametrize(
+    ("strategy", "closes", "trigger"),
+    [
+        (RSIStrategy("SIM", period=14), list(range(100, 115)), "above overbought threshold"),
+        (SimpleMovingAverageStrategy("SIM", short_window=2, long_window=3), [100, 100, 101, 90], "Death cross"),
+        (BollingerBandsStrategy("SIM", window=3), [100, 100, 100, 105], "upper band"),
+        (MACDStrategy("SIM", fast=2, slow=3, signal=2), [100, 101, 102, 103, 104, 105, 104], "Bearish crossover"),
+    ],
+)
+def test_sell_trigger_reports_flat_position_without_changing_actions(
+    strategy: BaseStrategy, closes: list[float], trigger: str,
+) -> None:
+    candles = tape([(price, price) for price in closes])
+    flat = strategy.on_candle(candles, Portfolio(cash=1_000, positions={"SIM": 0.0}, pnl=0))
+    held = strategy.on_candle(candles, Portfolio(cash=1_000, positions={"SIM": 2.0}, pnl=0))
+
+    assert flat.action_type == "HOLD" and flat.quantity == 0
+    assert trigger in flat.reason and "no position to sell" in flat.reason
+    assert held.action_type == "SELL" and held.quantity == 2
+
+
+def test_rsi_retains_simple_rolling_average_and_signal() -> None:
+    # Fourteen +1 changes, then eleven -1 changes: the last fourteen changes
+    # contain three gains and eleven losses, so the simple-window RSI is 3/14.
+    closes = list(range(100, 115)) + list(range(113, 102, -1))
+    strategy = RSIStrategy("SIM", period=14)
+    action = strategy.on_candle(tape([(price, price) for price in closes]), Portfolio(cash=1_000, positions={}, pnl=0))
+
+    assert strategy._compute_rsi(closes) == pytest.approx(100 * 3 / 14)
+    assert action.action_type == "BUY"
+
+
+def test_close_marked_drawdown_discloses_that_intrabar_losses_can_be_missed() -> None:
+    candles = tape([(100, 100), (100, 100), (50, 100)])
+    request = request_for(3, guard_enabled=True, guard_drawdown_pct=5)
+    run = simulate_strategy(request, candles, ScriptedStrategy({0: ("BUY", 1.0)}), use_guard=True)
+
+    assert run.equity_curve[1].cash + run.equity_curve[1].position * candles[2].open == pytest.approx(950)
+    assert run.max_drawdown_pct == 0 and run.guard_trigger_index is None
+    assert any("candle-close equity" in item and "between closes" in item for item in run_survival(request).assumptions)
 
 
 def test_strategy_sees_only_prefix_and_fills_at_next_open() -> None:
@@ -152,6 +198,52 @@ def test_position_cap_applies_to_post_cost_equity() -> None:
     assert run.ending_cash >= 0.0
 
 
+def test_saturated_cap_rejects_float_residue_instead_of_counting_a_fill() -> None:
+    candles = tape([(10, 10), (10, 10), (10, 10)])
+    request = request_for(3, starting_cash=10_000, fee_bps=10, slippage_bps=5, max_position_pct=30)
+
+    run = simulate_strategy(request, candles, ScriptedStrategy({0: ("BUY", 10_000), 1: ("BUY", 10_000)}))
+
+    fills = events_of(run, "fill")
+    assert len(fills) == run.trade_count == 1
+    assert fills[0].quantity == pytest.approx(299.86501576315419)
+    rejected, = events_of(run, "rejected")
+    assert rejected.candle_index == 2 and rejected.action == "BUY"
+    assert run.ending_position * 10 / run.final_equity == pytest.approx(0.30)
+
+
+def test_minimum_cash_and_cap_allow_a_real_tiny_high_price_fill() -> None:
+    candles = tape([(1_000_000_000, 1_000_000_000)] * 2)
+    request = request_for(2, start_price=1_000_000_000, starting_cash=0.01, max_position_pct=0.0001)
+
+    run = simulate_strategy(request, candles, ScriptedStrategy({0: ("BUY", 1.0)}))
+
+    fill, = events_of(run, "fill")
+    assert fill.quantity > 0
+    assert fill.quantity * candles[1].open == pytest.approx(1e-8)
+    assert 100 * run.ending_position * candles[1].close / run.final_equity == pytest.approx(0.0001)
+
+
+def test_phantom_cap_fill_cannot_replace_momentum_entry_and_trigger_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "MAX_POSITION_SIZE", 0.30)
+    first_quantity = 3_000 / 11
+    first_cost = 10 * (1 + 5 / 10_000) * (1 + 10 / 10_000)
+    cash_after_buy = 10_000 - first_quantity * first_cost
+    cap_open = math.nextafter(0.30 * cash_after_buy / (0.70 * first_quantity), -math.inf)
+    candles = tape([(10, 10), (10, 11), (10, 11.2), (cap_open, 10.2), (10.2, 10.2)])
+    request = request_for(5, starting_cash=10_000, fee_bps=10, slippage_bps=5, max_position_pct=30)
+    strategy = MomentumStrategy(symbol="SIM", window=2, threshold=0.01, stop_loss=0.10)
+
+    run = simulate_strategy(request, candles, strategy)
+
+    buy, = events_of(run, "fill")
+    assert buy.action == "BUY" and buy.price == pytest.approx(10.005)
+    assert any(event.candle_index == 3 and event.action == "BUY" for event in events_of(run, "rejected"))
+    assert not any(event.action == "SELL" for event in run.events)
+    assert strategy._entry_price == pytest.approx(10.005)
+    assert run.final_equity == pytest.approx(cash_after_buy + first_quantity * 10.2)
+
+
 def test_buy_and_hold_uses_the_same_entry_timing_and_costs() -> None:
     candles = tape([(100, 100), (100, 100), (100, 100)])
     request = request_for(3, fee_bps=100.0, slippage_bps=100.0)
@@ -187,6 +279,25 @@ def test_drawdown_guard_blocks_later_buys_but_does_not_force_a_sale() -> None:
     assert not any(e.action == "BUY" and e.candle_index > 1 for e in guard_fills)
     assert any(e.action == "SELL" and e.candle_index == 3 for e in guard_fills)
     assert any(e.action == "BUY" and e.candle_index == 2 for e in events_of(unguarded, "fill"))
+
+
+@pytest.mark.parametrize("scale", [0.001, 1.0, 1_000_000.0])
+@pytest.mark.parametrize(("close_offset", "triggered"), [(0.0, True), (0.0001, False)])
+def test_guard_rounding_at_threshold_is_scale_aware(scale: float, close_offset: float, triggered: bool) -> None:
+    # A $107 account holding one unit bought at $100 reaches exactly 3%
+    # drawdown at $96.79. The offset case is measurably above that price.
+    close = (96.79 + close_offset) * scale
+    candles = [c.model_copy(update={"low": min(c.open, c.close)}) for c in tape([
+        (100 * scale, 100 * scale), (100 * scale, close), (close, close),
+    ])]
+    request = request_for(3, start_price=100 * scale, starting_cash=107 * scale,
+                          guard_enabled=True, guard_drawdown_pct=3, max_position_pct=100)
+    run = simulate_strategy(request, candles, ScriptedStrategy({0: ("BUY", 1.0), 1: ("BUY", 0.01)}), use_guard=True)
+
+    assert (run.guard_trigger_index == 1) is triggered
+    assert bool(events_of(run, "blocked")) is triggered
+    assert len(events_of(run, "fill")) == (1 if triggered else 2)
+    assert any("four floating-point ULPs" in item for item in run_survival(request).assumptions)
 
 
 def test_momentum_stop_loss_uses_next_open_fill_not_signal_close() -> None:
@@ -363,16 +474,16 @@ def test_fingerprint_changes_when_engine_version_changes(monkeypatch: pytest.Mon
     assert changed.fingerprint != original.fingerprint
 
 
-def test_v3_fingerprint_differs_from_v2_for_the_same_request_and_tape(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_v4_fingerprint_differs_from_v3_for_the_same_request_and_tape(monkeypatch: pytest.MonkeyPatch) -> None:
     request = request_for(30, strategy_key="momentum", seed=123, shock_pct=20, shock_index=15)
-    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v2")
-    v2 = run_survival(request)
     monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v3")
     v3 = run_survival(request)
-    assert v2.candles == v3.candles
-    assert v2.request == v3.request == request
-    assert v2.strategy_key == v3.strategy_key == request.strategy_key
-    assert v2.fingerprint != v3.fingerprint
+    monkeypatch.setattr(survival, "ENGINE_VERSION", "survival-lab-v4")
+    v4 = run_survival(request)
+    assert v3.candles == v4.candles
+    assert v3.request == v4.request == request
+    assert v3.strategy_key == v4.strategy_key == request.strategy_key
+    assert v3.fingerprint != v4.fingerprint
 
 
 def test_signal_sizing_configuration_is_reported_and_changes_fingerprint(

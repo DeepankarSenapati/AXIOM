@@ -73,6 +73,7 @@
 .lab-seed-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .lab-seed-row label, .lab-guard-top strong { display: block; color: #d2dfd2; font-size: 12px; font-weight: 600; }
 .lab-seed-row small, .lab-guard-top small { display: block; margin-top: 5px; color: #91a496; font-size: 10px; line-height: 1.4; }
+.lab-seed-row .lab-seed-error { color: #ffc6bd; }
 .lab-seed-row input { width: 115px; flex: none; padding: 7px 8px; border: 1px solid #3d5040; border-radius: 5px; background: #101813; color: #d7e8d3; font-family: ui-monospace, monospace; font-size: 12px; }
 .lab-guard { display: grid; gap: 17px; padding: 14px; border: 1px solid #334732; border-radius: 7px; background: #1d2d1e; }
 .lab-guard-top { display: flex; justify-content: space-between; gap: 10px; }

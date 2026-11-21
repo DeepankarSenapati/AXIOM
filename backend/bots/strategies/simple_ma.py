@@ -62,12 +62,19 @@ class SimpleMovingAverageStrategy(BaseStrategy):
             )
 
         # Death cross: short crosses below long
-        if prev_short_ma >= prev_long_ma and short_ma < long_ma and held > 0:
+        if prev_short_ma >= prev_long_ma and short_ma < long_ma:
+            if held > 0:
+                return Action(
+                    action_type="SELL",
+                    symbol=self.symbol,
+                    quantity=held,
+                    reason=f"Death cross: short_ma={short_ma:.4f} crossed below long_ma={long_ma:.4f}",
+                )
             return Action(
-                action_type="SELL",
+                action_type="HOLD",
                 symbol=self.symbol,
-                quantity=held,
-                reason=f"Death cross: short_ma={short_ma:.4f} crossed below long_ma={long_ma:.4f}",
+                quantity=0.0,
+                reason=f"Death cross: short_ma={short_ma:.4f} crossed below long_ma={long_ma:.4f} but no position to sell",
             )
 
         return Action(

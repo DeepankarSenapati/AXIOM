@@ -87,14 +87,24 @@ class MACDStrategy(BaseStrategy):
             )
 
         # Bearish crossover: histogram flips from positive to negative
-        if prev_hist >= 0 and current_hist < 0 and held > 0:
+        if prev_hist >= 0 and current_hist < 0:
+            if held > 0:
+                return Action(
+                    action_type="SELL",
+                    symbol=self.symbol,
+                    quantity=held,
+                    reason=(
+                        f"Bearish crossover: MACD={macd_line[-1]:.4f} "
+                        f"crossed below signal={signal_line[-1]:.4f}"
+                    ),
+                )
             return Action(
-                action_type="SELL",
+                action_type="HOLD",
                 symbol=self.symbol,
-                quantity=held,
+                quantity=0.0,
                 reason=(
                     f"Bearish crossover: MACD={macd_line[-1]:.4f} "
-                    f"crossed below signal={signal_line[-1]:.4f}"
+                    f"crossed below signal={signal_line[-1]:.4f} but no position to sell"
                 ),
             )
 

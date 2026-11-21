@@ -17,7 +17,8 @@ scenarios, and Shock Landscape explores a grid of shocks and fees on one
 synthetic seed. These are experiments, not forecasts or evidence of live results.
 See [the demo guide](docs/SURVIVAL_LAB.md) and
 [experiment notes](docs/EXPERIMENT_NOTES.md) for instructions and limitations;
-[investor notes](docs/INVESTOR_NOTES.md) describe the unvalidated product thesis.
+[investor notes](docs/INVESTOR_NOTES.md) and the [founder vision](docs/FOUNDER_VISION.md)
+describe the unvalidated product thesis and proposed validation plan.
 
 ---
 
@@ -63,7 +64,7 @@ AXIOM is a platform where:
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.11+, FastAPI, SQLAlchemy 2, Pydantic v2, SQLite |
+| Backend | Python 3.11/3.12, FastAPI, SQLAlchemy 2, Pydantic v2, SQLite |
 | Frontend | React 18, Vite, TailwindCSS, React Router v7, Recharts |
 | Market Data | CCXT (Binance public API), yfinance (NSE India), MockMarketFeed |
 | Auth | JWT (HS256), bcrypt password hashing |
@@ -97,8 +98,13 @@ pip install -r requirements.txt
 
 ```bash
 cd frontend
-npm install
+npm ci
 ```
+
+For a disposable one-command rehearsal after installing dependencies, activate
+the virtual environment and run `python scripts/demo.py` from the project root.
+It starts both local services with a temporary database; see the
+[demo guide](docs/SURVIVAL_LAB.md) for what persists and how to stop it.
 
 ### 3. Start the backend
 
@@ -123,7 +129,7 @@ cd frontend
 npm run dev
 ```
 
-Dashboard available at `http://localhost:5173`
+Open the URL printed by Vite, normally `http://localhost:5173`.
 
 ### 5. Run the test suite
 
@@ -301,11 +307,14 @@ Columns: Rank, Strategy, Runs, Avg Sharpe, Avg PnL, **Avg Alpha**, Best PnL, Avg
 
 All strategies inherit `BaseStrategy` and implement `on_candle(candles, portfolio) -> Action`. They only ever see `candles[:i+1]` — no lookahead.
 
-Position sizing rule (applies to all strategies):
+Desired BUY signal size (applies to all strategies when cash is available):
 ```
 quantity = (portfolio.cash × MAX_POSITION_SIZE) / current_price
          = (portfolio.cash × 0.30) / current_price
 ```
+
+Survival Lab may reduce the eventual fill for costs, available cash, or its
+separate position cap. The legacy Bot Arena uses different fill assumptions.
 
 ### 1. Simple Moving Average (`simple_ma`)
 
@@ -315,13 +324,14 @@ quantity = (portfolio.cash × MAX_POSITION_SIZE) / current_price
 short_MA(t) = mean(close[t-short_window+1 : t+1])
 long_MA(t)  = mean(close[t-long_window+1  : t+1])
 
-BUY  if short_MA(t-1) ≤ long_MA(t-1)  AND  short_MA(t) > long_MA(t)   ← golden cross
-SELL if short_MA(t-1) ≥ long_MA(t-1)  AND  short_MA(t) < long_MA(t)   ← death cross
+BUY  if short_MA(t-1) ≤ long_MA(t-1) AND short_MA(t) > long_MA(t), with available cash
+SELL if short_MA(t-1) ≥ long_MA(t-1) AND short_MA(t) < long_MA(t), with a holding
 HOLD otherwise
 ```
 
 Default parameters: `short_window=5`, `long_window=20`
-Minimum candles required: `long_window` (20)
+`long_window` candles (20 by default) are needed to calculate the averages;
+the earliest possible crossover needs one additional candle (21 by default).
 
 ### 2. RSI — Relative Strength Index (`rsi`)
 
@@ -336,35 +346,43 @@ loss(i)  = max(-delta(i), 0)
 avg_gain = mean(gain[t-period+1 : t+1])
 avg_loss = mean(loss[t-period+1 : t+1])
 
-RS  = avg_gain / avg_loss
-RSI = 100 - (100 / (1 + RS))
+if avg_loss == 0: RSI = 100
+otherwise:
+  RS  = avg_gain / avg_loss
+  RSI = 100 - (100 / (1 + RS))
 
-BUY  if RSI < oversold   (default: 30)
+BUY  if RSI < oversold   (default: 30) AND cash is available
 SELL if RSI > overbought (default: 70) AND holding > 0
 HOLD otherwise
 ```
 
 Default parameters: `period=14`, `oversold=30`, `overbought=70`
 Minimum candles required: `period + 1` (15)
+The zero-loss rule also makes RSI 100 when all prices are flat; with a
+holding and the default thresholds, that produces a SELL signal.
 
 ### 3. Bollinger Bands (`bollinger_bands`)
 
 **Signal**: Price touches lower or upper band.
 
 ```
-middle = mean(close[t-window+1 : t+1])
-σ      = sqrt( mean( (close[i] - middle)² ) )   ← population std dev
+history = close[t-window : t]                  ← excludes current close
+middle = mean(history)
+σ      = sqrt( mean( (history[i] - middle)² ) )   ← population std dev
 
 upper  = middle + num_std × σ
 lower  = middle - num_std × σ
 
-BUY  if close(t) ≤ lower   (mean-reversion: price is cheap)
-SELL if close(t) ≥ upper   (mean-reversion: price is expensive) AND holding > 0
-HOLD otherwise
+if close(t) ≤ lower: BUY if cash is available; otherwise HOLD
+else if close(t) ≥ upper: SELL if holding > 0; otherwise HOLD
+else: HOLD
 ```
 
 Default parameters: `window=20`, `num_std=2.0`
 Minimum candles required: `window + 1` (21)
+When the preceding prices are flat and the current close equals both bands,
+the lower-band condition is checked first, so it can produce a BUY even if a
+position is already held.
 
 ### 4. MACD — Moving Average Convergence Divergence (`macd`)
 
@@ -383,13 +401,13 @@ MACD_line = fast_EMA - slow_EMA
 signal_line = EMA(MACD_line, signal)   default signal=9
 histogram   = MACD_line - signal_line
 
-BUY  if histogram(t-1) ≤ 0 AND histogram(t) > 0   ← bullish crossover
+BUY  if histogram(t-1) ≤ 0 AND histogram(t) > 0   ← bullish crossover, cash available
 SELL if histogram(t-1) ≥ 0 AND histogram(t) < 0   ← bearish crossover, holding > 0
 HOLD otherwise
 ```
 
 Default parameters: `fast=12`, `slow=26`, `signal=9`
-Minimum candles required: `slow + signal - 1 + 1 = 34`
+Minimum candles required for a crossover: `slow + signal = 35` with defaults.
 
 ### 5. Momentum (`momentum`)
 
@@ -398,13 +416,16 @@ Minimum candles required: `slow + signal - 1 + 1 = 34`
 ```
 gain = (close(t) - close(t - window + 1)) / close(t - window + 1)
 
-BUY  if gain ≥ threshold (default: 2%)   ← price has momentum
-SELL if held > 0 AND (close(t) - entry_price) / entry_price ≤ -stop_loss (default: -3%)
+SELL if held > 0, entry_price is known, and (close(t) - entry_price) / entry_price ≤ -stop_loss
+else BUY if gain ≥ threshold (default: 2%) and cash is available
 HOLD otherwise
 ```
 
 Default parameters: `window=10`, `threshold=0.02`, `stop_loss=0.03`
 Minimum candles required: `window` (10)
+The stop-loss check takes precedence over a new BUY. The legacy Bot Arena
+records the latest BUY signal's close as the entry; Survival Lab tracks the
+latest actual simulated BUY fill instead. Neither uses average cost here.
 
 ---
 

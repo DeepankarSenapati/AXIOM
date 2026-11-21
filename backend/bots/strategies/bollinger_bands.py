@@ -36,7 +36,7 @@ class BollingerBandsStrategy(BaseStrategy):
                 action_type="HOLD",
                 symbol=self.symbol,
                 quantity=0.0,
-                reason=f"Insufficient history: need {self.window} candles, have {len(candles)}",
+                reason=f"Insufficient history: need {self.window + 1} candles, have {len(candles)}",
             )
 
         closes = [c.close for c in candles]
@@ -60,12 +60,19 @@ class BollingerBandsStrategy(BaseStrategy):
                 reason=f"Price {price:.4f} <= lower band {lower:.4f} (mid={middle:.4f})",
             )
 
-        if price >= upper and held > 0:
+        if price >= upper:
+            if held > 0:
+                return Action(
+                    action_type="SELL",
+                    symbol=self.symbol,
+                    quantity=held,
+                    reason=f"Price {price:.4f} >= upper band {upper:.4f} (mid={middle:.4f})",
+                )
             return Action(
-                action_type="SELL",
+                action_type="HOLD",
                 symbol=self.symbol,
-                quantity=held,
-                reason=f"Price {price:.4f} >= upper band {upper:.4f} (mid={middle:.4f})",
+                quantity=0.0,
+                reason=f"Price {price:.4f} >= upper band {upper:.4f} but no position to sell",
             )
 
         return Action(

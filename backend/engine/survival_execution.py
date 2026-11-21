@@ -58,10 +58,27 @@ def _buy_quantity(
     affordable = cash / unit_cost
     fraction = request.max_position_pct / PERCENT_SCALE
     equity_before = cash + position * open_price
-    numerator = fraction * equity_before - position * open_price
+    cap_value = fraction * equity_before
+    position_value = position * open_price
+    numerator = cap_value - position_value
+    # When the position is already at the cap, subtraction can leave a few
+    # floating-point ULPs of spurious headroom. Reject only that numerical
+    # residue; an absolute quantity cutoff would discard legitimate small buys.
+    tolerance = 4 * max(math.ulp(cap_value), math.ulp(position_value), fraction * math.ulp(equity_before))
+    if numerator <= tolerance:
+        return 0.0
     denominator = open_price - fraction * (open_price - unit_cost)
     capped = max(0.0, numerator / denominator)
     return max(0.0, min(desired, affordable, capped))
+
+
+def _guard_reached(peak: float, equity: float, threshold_pct: float) -> bool:
+    """Compare close-marked loss to the threshold, allowing rounding at the boundary."""
+    threshold_loss = peak * (threshold_pct / PERCENT_SCALE)
+    # Peak and equity can each contain rounding from mark-to-market arithmetic;
+    # use their scale (and the computed threshold) rather than a fixed percent.
+    tolerance = 4 * max(math.ulp(peak), math.ulp(equity), math.ulp(threshold_loss))
+    return peak - equity >= threshold_loss - tolerance
 
 
 def _event(
@@ -154,7 +171,7 @@ def simulate_strategy(
             index=index, timestamp=candle.timestamp, equity=equity, cash=cash,
             position=position, drawdown_pct=drawdown,
         ))
-        if use_guard and trigger is None and drawdown >= request.guard_drawdown_pct:
+        if use_guard and trigger is None and _guard_reached(peak, equity, request.guard_drawdown_pct):
             trigger = index
             events.append(_event(
                 index, candle, "guard", "HOLD", 0.0, candle.close, 0.0,

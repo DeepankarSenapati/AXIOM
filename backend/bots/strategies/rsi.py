@@ -51,12 +51,19 @@ class RSIStrategy(BaseStrategy):
                 reason=f"RSI={rsi:.2f} below oversold threshold {self.oversold}",
             )
 
-        if rsi > self.overbought and held > 0:
+        if rsi > self.overbought:
+            if held > 0:
+                return Action(
+                    action_type="SELL",
+                    symbol=self.symbol,
+                    quantity=held,
+                    reason=f"RSI={rsi:.2f} above overbought threshold {self.overbought}",
+                )
             return Action(
-                action_type="SELL",
+                action_type="HOLD",
                 symbol=self.symbol,
-                quantity=held,
-                reason=f"RSI={rsi:.2f} above overbought threshold {self.overbought}",
+                quantity=0.0,
+                reason=f"RSI={rsi:.2f} above overbought threshold {self.overbought} but no position to sell",
             )
 
         return Action(
@@ -67,7 +74,7 @@ class RSIStrategy(BaseStrategy):
         )
 
     def _compute_rsi(self, closes: list[float]) -> float:
-        """Wilder's smoothed RSI over self.period using the last period+1 closes."""
+        """RSI using simple mean gains and losses over the latest period."""
         window = closes[-(self.period + 1) :]
         gains: list[float] = []
         losses: list[float] = []

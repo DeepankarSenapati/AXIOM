@@ -12,7 +12,7 @@ from backend.engine.survival_models import SurvivalRequest, SurvivalResponse, Su
 
 
 # Bump this when replay, fixture, strategy assumptions, or output semantics change.
-ENGINE_VERSION = "survival-lab-v3"
+ENGINE_VERSION = "survival-lab-v4"
 
 
 def _assumptions(request: SurvivalRequest, signal_cash_fraction: float) -> list[str]:
@@ -29,7 +29,9 @@ def _assumptions(request: SurvivalRequest, signal_cash_fraction: float) -> list[
         f"Long-only, no leverage; buys are capped at {request.max_position_pct:g}% of post-cost equity at execution.",
         f"Each fill uses {request.fee_bps:g} bps commission and {request.slippage_bps:g} bps adverse slippage.",
         "Fills assume unlimited available liquidity; taxes, market impact, dividends, intrabar movement and other costs are excluded.",
+        "Maximum drawdown is calculated from candle-close equity and may miss losses between closes.",
         "Guard, when enabled, permanently pauses new buys after the close reaches its drawdown threshold; sells remain allowed.",
+        "Guard threshold comparison allows four floating-point ULPs of the peak, close equity, or threshold loss for rounding at the boundary.",
         "The guard does not force liquidation and cannot guarantee a loss limit, especially through gaps.",
         "Buy-and-hold deploys all cash at the first eligible next open with the same entry costs; its exposure can differ from the strategy.",
         "Momentum's stop-loss reference is its latest actual simulated buy fill, not average cost.",

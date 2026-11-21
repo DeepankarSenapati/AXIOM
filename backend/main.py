@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -99,4 +100,8 @@ app.include_router(tech.router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    result = {"status": "ok"}
+    nonce = os.environ.get("AXIOM_DEMO_READINESS_NONCE")
+    if nonce:
+        result["demo_nonce"] = nonce
+    return result

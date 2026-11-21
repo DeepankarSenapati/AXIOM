@@ -1,4 +1,7 @@
-const TOKEN_KEY = "axiom_token";
+// Each isolated launcher run has its own token namespace, even if the browser
+// happens to reuse a port from an earlier temporary database.
+const demoSession = typeof __AXIOM_DEMO_SESSION__ === "string" ? __AXIOM_DEMO_SESSION__ : null;
+const TOKEN_KEY = demoSession ? `axiom_token_demo_${demoSession}` : "axiom_token";
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -17,10 +20,10 @@ export function getUser() {
   const token = getToken();
   if (!token) return null;
   try {
-    const payload = token.split(".")[1];
-    // Pad base64 to a multiple of 4
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded));
+    const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch {
     return null;
   }

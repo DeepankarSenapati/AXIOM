@@ -41,7 +41,8 @@
 .worlds-card dl { display: grid; gap: 7px; margin-top: 15px; }
 .worlds-card dl div { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; line-height: 1.4; }
 .worlds-card dt { color: #99ad9b; }
-.worlds-card dd { margin: 0; color: #d6e6d4; font-family: ui-monospace, monospace; text-align: right; }
+.worlds-card dd { min-width: 0; margin: 0; color: #d6e6d4; font-family: ui-monospace, monospace; text-align: right; overflow-wrap: anywhere; }
+.worlds-card dd small { color: #9eb3a0; font-size: 9px; }
 .worlds-fingerprint { margin-top: 14px; color: #77917d; font-family: ui-monospace, monospace; font-size: 9px; }
 .worlds-card button { display: flex; justify-content: space-between; width: 100%; margin-top: 12px; padding: 9px 10px; text-align: left; }
 .worlds-assumptions { margin-top: 19px; border-top: 1px solid #304335; }
@@ -51,6 +52,6 @@
   .worlds-header-mark { width: 58px; height: 58px; }
   .worlds-header-mark i:nth-child(2) { inset: 17px; }
   .worlds-form button { flex: 1 1 100%; }
-  .worlds-aggregate { gap: 8px; }
+  .worlds-aggregate { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .worlds-aggregate strong { font-size: 15px; }
 }

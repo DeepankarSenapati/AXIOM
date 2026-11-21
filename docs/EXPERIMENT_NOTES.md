@@ -1,10 +1,13 @@
 # Experiment notes
 
-These observations were produced with `survival-lab-v2` synthetic data, not
-market data or evidence of future performance. Version `survival-lab-v3`
-adds request and strategy metadata without changing the simulated price or
-execution logic; its fingerprints intentionally differ. The observations
-show how to question a strategy, including when a safeguard hurts its outcome.
+These observations use synthetic data, not market data or evidence of future
+performance. The tables were originally generated with `survival-lab-v2` and
+rerun with `survival-lab-v4`; the displayed values and counts match for these
+chosen samples. Version 3 adds request and strategy metadata. Version 4 also
+corrects some explanations and numerical edge cases at the position cap and
+guard threshold, which can change other outcomes. Fingerprints intentionally
+differ by version. The observations show how to question a strategy, including
+when a safeguard hurts its outcome.
 
 ## A small, reproducible stress sweep
 
@@ -13,7 +16,8 @@ zero-based candle index 90, $10,000 starting cash, a 10 bps fee and 5 bps
 adverse slippage per fill, a 30% execution exposure cap, and 30% of available
 cash as the built-in buy-signal size. Strategies use their registry defaults.
 The guard stops new buys for the rest of the run after its threshold, but it
-does not liquidate positions. Drawdowns below are positive magnitudes.
+does not liquidate positions. Drawdowns below are positive magnitudes based on
+close-marked equity; they can miss intrabar losses.
 
 | Strategy / guard threshold | Median return, no guard → guard | Worst observed drawdown, no guard → guard | Guarded final equity: higher / lower / equal |
 |---|---:|---:|---:|

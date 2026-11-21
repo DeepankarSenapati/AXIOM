@@ -130,3 +130,13 @@ test("uses distinct currency ticks for nearly flat curves", () => {
   assert.equal(ticks.length, 5);
   assert.equal(new Set(ticks).size, 5);
 });
+
+test("the brief preserves small positive and negative returns and drawdown", () => {
+  const data = fixture();
+  data.baseline.unguarded = makeRun([10000, 10000, 10000.358], 10000);
+  data.shock.unguarded = makeRun([10000, 9999.642, 9999.642], 10000);
+  const html = buildExperimentBrief(data);
+  assert.match(html, /Baseline return<\/span><b>\+0\.0036%<\/b>/);
+  assert.match(html, /Shocked return<\/span><b>−0\.0036%<\/b>/);
+  assert.match(html, /Max close drawdown, unguarded<\/span><b>0\.0036%<\/b>/);
+});
