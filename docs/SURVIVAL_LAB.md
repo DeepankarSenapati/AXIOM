@@ -46,8 +46,9 @@ terminal from the project root, with the Python virtual environment activated:
 python scripts/demo.py
 ```
 
-Open the printed loopback URL and use **Explore demo credentials**. The
-launcher creates a fresh temporary database and deletes it on normal exit;
+Open the printed loopback URL, select **Explore demo credentials**, then
+choose **Admin** and click **Enter workspace**. The launcher creates a fresh
+temporary database and deletes it on normal exit;
 it does not use your existing project database. Press Ctrl+C to stop both
 services. Browser storage, downloaded exports, and the project `app.log`
 remain; if an old browser session appears, sign out and back in. The launcher

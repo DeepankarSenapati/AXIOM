@@ -136,7 +136,8 @@ def main() -> int:
             wait_for(f"http://127.0.0.1:{frontend_port}/health", processes, marker)
             wait_for(f"http://127.0.0.1:{frontend_port}/lab", processes, b'<div id="root">')
             print(f"\nDemo ready: http://127.0.0.1:{frontend_port}/lab", flush=True)
-            print("Use Explore demo credentials on the sign-in screen. If an old session appears, sign out and back in.", flush=True)
+            print("On the sign-in screen, open Explore demo credentials, choose Admin, then enter the workspace.", flush=True)
+            print("If an old session appears, sign out and back in.", flush=True)
             print("Press Ctrl+C to stop both services and remove the temporary database.", flush=True)
             while all(process.poll() is None for process in processes):
                 time.sleep(0.5)

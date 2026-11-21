@@ -99,9 +99,10 @@ python --version    # Should show Python 3.11 or 3.12
 python scripts/demo.py
 ```
 
-Open the printed URL, choose **Explore demo credentials** to sign in, and
-press Ctrl+C in the terminal when finished. If dependencies are missing,
-follow the installation steps below. Install and rehearse before the event;
+Open the printed URL, choose **Explore demo credentials**, select **Admin**
+to fill the form, and click **Enter workspace**. Press Ctrl+C in the terminal
+when finished. If dependencies are missing, follow the installation steps below.
+Install and rehearse before the event;
 the Survival Lab runs locally after setup, while historical market data
 requires an internet connection.
 

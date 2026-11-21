@@ -134,6 +134,11 @@ select { color-scheme: dark; }
 .demo-credentials summary::-webkit-details-marker { display: none; }
 .demo-credentials summary span { color: #c9f77d; font-size: 16px; line-height: .8; }
 .demo-credentials-list { display: grid; gap: 7px; padding: 14px; border: 1px solid #2a382d; border-radius: 5px; background: #151e18; color: #aabcae; font-family: ui-monospace, monospace; font-size: 10px; overflow-wrap: anywhere; }
+.demo-credentials-list > p { line-height: 1.5; }
+.demo-credentials-list button { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px; border: 1px solid #314737; border-radius: 4px; background: #1b2a1e; color: #d5e8ce; text-align: left; }
+.demo-credentials-list button:hover, .demo-credentials-list button:focus-visible { border-color: #c9f77d; outline-color: #c9f77d; }
+.demo-credentials-list button strong, .demo-credentials-list button small { display: block; }
+.demo-credentials-list button small { margin-top: 3px; color: #aabcae; font-size: 10px; }
 
 @media (max-width: 900px) {
   .app-shell { display: block; }

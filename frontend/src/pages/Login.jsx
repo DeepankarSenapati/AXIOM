@@ -4,6 +4,13 @@ import { setToken } from "../auth.js";
 import { loginDestination } from "../loginDestination.js";
 import { BrandMark } from "../components/Brand.jsx";
 
+const DEMO_ACCOUNTS = [
+  { role: "Admin", email: "admin@axiom.com", password: "admin123" },
+  { role: "Tech company", email: "tech@botbuilders.com", password: "tech123" },
+  { role: "Governance", email: "gov@oversight.com", password: "gov123" },
+  { role: "Buyer", email: "buyer@demo.com", password: "buyer123" },
+];
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -106,10 +113,15 @@ export default function Login() {
           <details className="demo-credentials">
             <summary>Explore demo credentials <span aria-hidden="true">+</span></summary>
             <div className="demo-credentials-list">
-              <p>admin@axiom.com / admin123</p>
-              <p>tech@botbuilders.com / tech123</p>
-              <p>gov@oversight.com / gov123</p>
-              <p>buyer@demo.com / buyer123</p>
+              <p>Choose an account to fill the form, then enter the workspace.</p>
+              {DEMO_ACCOUNTS.map((account) => <button key={account.email} type="button" onClick={() => {
+                setEmail(account.email);
+                setPassword(account.password);
+                setError(null);
+              }} aria-label={`Fill ${account.role} demo credentials`}>
+                <span><strong>{account.role}</strong><small>{account.email} / {account.password}</small></span>
+                <span aria-hidden="true">USE ↗</span>
+              </button>)}
             </div>
           </details>
         </div>
