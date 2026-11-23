@@ -15,6 +15,10 @@ fees, slippage, a buy-pause guard, decision-by-decision replay, and a
 reproducibility passport. Synthetic Worlds compares a small set of seeded
 scenarios, and Shock Landscape explores a grid of shocks and fees on one
 synthetic seed. These are experiments, not forecasts or evidence of live results.
+War Room adds three evidence-linked review perspectives: a rule-generated
+offline walkthrough and an optional Claude API mode. Model output can be
+wrong, and a citation is not independent verification. See the
+[War Room guide](docs/WAR_ROOM.md) and [research](docs/WAR_ROOM_RESEARCH.md).
 See [the demo guide](docs/SURVIVAL_LAB.md) and
 [experiment notes](docs/EXPERIMENT_NOTES.md) for instructions and limitations;
 [investor notes](docs/INVESTOR_NOTES.md) and the [founder vision](docs/FOUNDER_VISION.md)

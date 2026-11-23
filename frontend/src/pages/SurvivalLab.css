@@ -184,6 +184,7 @@
 .lab-event-tabs button.is-active { border-color: #92b77e; color: #d5f2be; background: #304832; }
 .lab-recorder:focus-visible { outline: 2px solid #c8f37b; outline-offset: 3px; }
 .lab-navigation-notice { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.lab-inspect-context { margin-top: 12px; padding: 9px 10px; border: 1px solid #425a41; border-radius: 4px; color: #c7d9c1; background: #1c2c1e; font-size: 10px; line-height: 1.5; }
 .lab-event-details { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; color: #89a18d; font-family: ui-monospace, monospace; font-size: 9px; }
 .lab-event-details b { color: #d6e8d4; font-weight: 600; }
 .lab-passport { margin-top: 24px; padding: clamp(21px, 3vw, 34px); }

@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.api import admin, arena, auth, bots, governance, lab, tech, tokenomics
+from backend.api import admin, arena, auth, bots, governance, lab, tech, tokenomics, war_room
 from backend.db.seed import seed_users
 from backend.db.session import get_db, init_db
 
@@ -92,6 +92,7 @@ app.include_router(auth.router)
 app.include_router(bots.router)
 app.include_router(arena.router)
 app.include_router(lab.router)
+app.include_router(war_room.router)
 app.include_router(tokenomics.router)
 app.include_router(governance.router)
 app.include_router(admin.router)

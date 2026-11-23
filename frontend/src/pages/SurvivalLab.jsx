@@ -13,6 +13,7 @@ import EvidenceTrail from "../components/EvidenceTrail.jsx";
 import SyntheticWorlds from "../components/SyntheticWorlds.jsx";
 import ShockLandscape from "../components/ShockLandscape.jsx";
 import PassportReplay from "../components/PassportReplay.jsx";
+import WarRoom from "../components/WarRoom.jsx";
 import "./SurvivalLab.css";
 
 const STRATEGIES = [
@@ -149,6 +150,7 @@ export default function SurvivalLab() {
   const [worldsRunning, setWorldsRunning] = useState(false);
   const [landscapeRunning, setLandscapeRunning] = useState(false);
   const [passportRunning, setPassportRunning] = useState(false);
+  const [warRoomRunning, setWarRoomRunning] = useState(false);
   const [passportComparison, setPassportComparison] = useState(null);
   const [briefError, setBriefError] = useState("");
   const [error, setError] = useState("");
@@ -205,6 +207,7 @@ export default function SurvivalLab() {
 
   const displayedRun = results ? (replayMode === "baseline" ? results.baseline : results.shock) : null;
   const displayedPath = replayGuarded && displayedRun?.guarded ? displayedRun.guarded : displayedRun?.unguarded;
+  const displayedPoint = displayedPath?.equity_curve?.[cursor];
   const currentCandle = displayedRun?.candles[cursor];
   const currentEvents = displayedPath?.events.filter((event) => event.candle_index === cursor) ?? [];
   const currentSignal = currentEvents.find((event) => event.event_type === "signal");
@@ -219,9 +222,9 @@ export default function SurvivalLab() {
   const chartData = useMemo(() => timeline.slice(0, cursor + 1), [timeline, cursor]);
   const chartAxis = useMemo(() => equityAxis(chartData), [chartData]);
   const chartPoint = timeline[cursor];
-  const navigationNotice = navigationTarget && replayMode === "shock" && replayGuarded === Boolean(guarded) &&
+  const navigationNotice = navigationTarget && replayMode === "shock" && replayGuarded === navigationTarget.guarded &&
     cursor === navigationTarget.candleIndex && (!navigationTarget.event || detailEvent === navigationTarget.event)
-    ? `Opened ${navigationTarget.label} at candle ${cursor + 1} in the tested ${guarded ? "guarded" : "unguarded"} path.` : "";
+    ? `Opened ${navigationTarget.label} at candle ${cursor + 1} in the tested ${navigationTarget.guarded ? "guarded" : "unguarded"} path.` : "";
 
   function updateInput(key, value) {
     setLoadedNotice(null);
@@ -285,7 +288,7 @@ export default function SurvivalLab() {
   }
 
   async function replayPassport(passport) {
-    if (running || worldsRunning || landscapeRunning || passportRunning || passportAbortRef.current) return;
+    if (running || worldsRunning || landscapeRunning || passportRunning || warRoomRunning || passportAbortRef.current) return;
     const controller = new AbortController();
     passportAbortRef.current = controller;
     setPassportRunning(true);
@@ -332,12 +335,13 @@ export default function SurvivalLab() {
   }
 
   function navigateEvidence(moment) {
+    const guardedPath = moment.path === "guarded" ? true : moment.path === "unguarded" ? false : Boolean(shockRun.guarded);
     setPlaying(false);
     setReplayMode("shock");
-    setReplayGuarded(Boolean(shockRun.guarded));
+    setReplayGuarded(guardedPath);
     setCursor(moment.candleIndex);
     setSelectedEvent(moment.event);
-    setNavigationTarget(moment);
+    setNavigationTarget({ ...moment, guarded: guardedPath });
     recorderRef.current?.focus({ preventScroll: true });
     recorderRef.current?.scrollIntoView({ block: "center" });
   }
@@ -401,16 +405,21 @@ export default function SurvivalLab() {
         </div>
       </header>
 
-      <PassportReplay disabled={running || worldsRunning || landscapeRunning || passportRunning} replaying={passportRunning} comparison={passportComparison} onClearComparison={() => setPassportComparison(null)} onReplay={replayPassport} />
+      <PassportReplay disabled={running || worldsRunning || landscapeRunning || passportRunning || warRoomRunning} replaying={passportRunning} comparison={passportComparison} onClearComparison={() => setPassportComparison(null)} onReplay={replayPassport} />
 
-      <div className="lab-section-title"><div><span>THE CONTROL ROOM</span><h2>Design your experiment</h2></div><p>One strategy. Two scenarios. The same synthetic market.</p></div>
+      <div className="lab-war-room-teaser">
+        <div><span>NEW / AXIOM WAR ROOM</span><strong>Three perspectives. One strategy on trial.</strong><p>Run an experiment to open an evidence-linked review with the Challenger, Defender and Auditor.</p></div>
+        <a href={results ? "#war-room" : "#lab-control-room"}>{results ? "Enter the War Room" : "Set up the case"} <span aria-hidden="true">↗</span></a>
+      </div>
+
+      <div className="lab-section-title" id="lab-control-room"><div><span>THE CONTROL ROOM</span><h2>Design your experiment</h2></div><p>One strategy. Two scenarios. The same synthetic market.</p></div>
 
       <div className="lab-layout">
         <form className="lab-controls" onSubmit={handleRun}>
           <div className="lab-panel-heading"><div><span>01 / STRATEGY</span><h3>Choose your bot</h3></div><span className="lab-panel-code">3 AVAILABLE</span></div>
           <div className="lab-picks" role="group" aria-label="Choose strategy">
             {STRATEGIES.map((strategy) => (
-              <button type="button" key={strategy.key} className={`lab-pick ${inputs.strategy_key === strategy.key ? "is-selected" : ""}`} aria-pressed={inputs.strategy_key === strategy.key} onClick={() => updateInput("strategy_key", strategy.key)} disabled={running || passportRunning}>
+              <button type="button" key={strategy.key} className={`lab-pick ${inputs.strategy_key === strategy.key ? "is-selected" : ""}`} aria-pressed={inputs.strategy_key === strategy.key} onClick={() => updateInput("strategy_key", strategy.key)} disabled={running || passportRunning || warRoomRunning}>
                 <span className="lab-pick-icon"><LabRobot strategy={strategy.key} /></span>
                 <span className="lab-pick-copy"><strong>{strategy.callsign}</strong><small>{strategy.label}</small></span>
                 <span className="lab-pick-number">{strategy.number}</span>
@@ -421,7 +430,7 @@ export default function SurvivalLab() {
 
           <div className="lab-control-divider" />
           <div className="lab-panel-heading"><div><span>02 / CONDITIONS</span><h3>Change the environment</h3></div></div>
-          <fieldset disabled={running || passportRunning} className="lab-fieldset">
+          <fieldset disabled={running || passportRunning || warRoomRunning} className="lab-fieldset">
             <Slider id={`${controlId}-shock`} label="Price shock" value={inputs.shock_pct} min={0} max={30} suffix="%" description={inputs.shock_pct === 0 ? "No shock will be injected." : `A hypothetical downward shock at candle ${configuredShockIndex + 1}.`} onChange={(value) => updateInput("shock_pct", value)} />
             <Slider id={`${controlId}-fee`} label="Trading fee" value={inputs.fee_bps} min={0} max={50} suffix=" bps" description="Applied to each simulated fill." onChange={(value) => updateInput("fee_bps", value)} />
             <Slider id={`${controlId}-slippage`} label="Slippage" value={inputs.slippage_bps} min={0} max={30} suffix=" bps" description="An assumed adverse price adjustment." onChange={(value) => updateInput("slippage_bps", value)} />
@@ -443,8 +452,8 @@ export default function SurvivalLab() {
             </div>
           </fieldset>
 
-          <button className="lab-run" type="submit" disabled={running || worldsRunning || landscapeRunning || passportRunning}>
-            <span>{running ? "Running experiment…" : worldsRunning || landscapeRunning || passportRunning ? "Waiting for calculation…" : results ? "Run experiment again" : "Run the experiment"}</span><span aria-hidden="true">↗</span>
+          <button className="lab-run" type="submit" disabled={running || worldsRunning || landscapeRunning || passportRunning || warRoomRunning}>
+            <span>{running ? "Running experiment…" : worldsRunning || landscapeRunning || passportRunning || warRoomRunning ? "Waiting for calculation…" : results ? "Run experiment again" : "Run the experiment"}</span><span aria-hidden="true">↗</span>
           </button>
           <p className="lab-control-foot">SIMULATION ONLY · RESULTS ARE NOT PREDICTIONS</p>
           {error && <p className="lab-error" role="alert">{error}</p>}
@@ -456,6 +465,7 @@ export default function SurvivalLab() {
             <span className="lab-status" role="status"><i /> {running || passportRunning ? "CALCULATING" : results ? "SIMULATION COMPLETE" : "AWAITING EXPERIMENT"}</span>
           </div>
           {dirty && <div className="lab-stale" role="status">Settings changed. You’re viewing the previous run until you run the experiment again.</div>}
+          {results && <a className="lab-war-room-link" href="#war-room">Open the War Room <span aria-hidden="true">↗</span></a>}
           {worldComparison && <div className={`lab-world-comparison ${worldComparison.recorded === worldComparison.calculated ? "is-match" : "is-mismatch"}`} role="status">
             <strong>WORLD {worldComparison.seed} / REPLAY {worldComparison.recorded === worldComparison.calculated ? "MATCHED" : "DIFFERED"}</strong>
             <p>The recorded and rerun fingerprints {worldComparison.recorded === worldComparison.calculated ? "match" : "do not match"}. This is not independent verification or proof of execution.</p>
@@ -528,8 +538,9 @@ export default function SurvivalLab() {
               <section className="lab-recorder" ref={recorderRef} tabIndex={-1} aria-labelledby="lab-recorder-title">
                 <div className="lab-subhead"><div><span>DECISION RECORDER / {replayMode === "shock" ? "SCENARIO" : "BASELINE"} / {replayGuarded && guarded ? "GUARDED" : "UNGUARDED"}</span><h4 id="lab-recorder-title">Inside the strategy</h4></div><span>CANDLE {cursor + 1}</span></div>
                 <p className="lab-navigation-notice" role="status" aria-live="polite">{navigationNotice}</p>
+                {navigationNotice && !navigationTarget.event && <p className="lab-inspect-context">Showing {navigationTarget.label} at this candle. The events below are separate recorded decisions.</p>}
                 <div className="lab-recorder-grid">
-                  <div className="lab-recorder-context"><span>CANDLE CLOSE</span><strong>{money(currentCandle?.close)}</strong><small>Synthetic price · {displayedRun.scenario.symbol}</small></div>
+                  <div className="lab-recorder-context"><span>CANDLE CLOSE</span><strong>{money(currentCandle?.close)}</strong><small>Synthetic price · {displayedRun.scenario.symbol}</small><span>CLOSE DRAWDOWN</span><strong>{formatPercent(displayedPoint?.drawdown_pct)}</strong><small>Selected path · peak-to-trough magnitude</small></div>
                   <div className="lab-recorder-content">
                     {currentEvents.length ? (
                       <>
@@ -547,8 +558,9 @@ export default function SurvivalLab() {
         </div>
       </div>
 
-      {results && <SyntheticWorlds key={`worlds-${shockRun.fingerprint}`} scenario={applied} experimentRunning={running || landscapeRunning || passportRunning} onBusyChange={setWorldsRunning} onSelectSeed={loadWorldSeed} />}
-      {results && <ShockLandscape key={`landscape-${shockRun.fingerprint}`} scenario={applied} otherBusy={running || worldsRunning || passportRunning} onBusyChange={setLandscapeRunning} onSelectCell={loadLandscapeCell} />}
+      {results && <WarRoom key={`war-room-${shockRun.fingerprint}`} scenario={applied} run={shockRun} dirty={dirty} otherBusy={running || worldsRunning || landscapeRunning || passportRunning} onBusyChange={setWarRoomRunning} onInspect={navigateEvidence} />}
+      {results && <SyntheticWorlds key={`worlds-${shockRun.fingerprint}`} scenario={applied} experimentRunning={running || landscapeRunning || passportRunning || warRoomRunning} onBusyChange={setWorldsRunning} onSelectSeed={loadWorldSeed} />}
+      {results && <ShockLandscape key={`landscape-${shockRun.fingerprint}`} scenario={applied} otherBusy={running || worldsRunning || passportRunning || warRoomRunning} onBusyChange={setLandscapeRunning} onSelectCell={loadLandscapeCell} />}
 
       {results && (
         <section className="lab-passport">
